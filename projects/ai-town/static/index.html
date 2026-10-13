@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>灵感镇 · AI Town</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div class="brand"><span class="logo">✳</span><div>灵感镇 <small>AI TOWN / 001</small></div></div><div class="header-right"><span id="mode">正在连接…</span><button id="reset" class="quiet">重新开始</button></div></header>
+<main>
+<section class="intro"><div><div class="eyebrow">一个小小的社会实验</div><h1>五个人，一座镇。<br><span>故事由你开始。</span></h1><p>投下一件小事，看看不同的人会如何回应。</p></div><div class="clock"><span id="day">第 1 天</span><strong id="phase">清晨 ☀</strong><small id="turn">尚未开始</small></div></section>
+<div class="layout"><div class="left"><section class="panel town-panel"><div class="section-head"><h2>小镇现场</h2><span class="live"><i></i> 居民已就位</span></div>
+<div class="town" aria-label="居民位置地图"><div class="sky-label">灵感镇 · 人口 5</div><div class="cloud c1">☁</div><div class="cloud c2">☁</div><div class="road horizontal"></div><div class="road vertical"></div>
+<div class="building workshop"><span>🏠</span><b>工坊</b><div data-place="工坊"></div></div><div class="building shop"><span>🏪</span><b>杂货铺</b><div data-place="杂货铺"></div></div><div class="building garden"><span>🌳</span><b>菜园</b><div data-place="菜园"></div></div><div class="building library"><span>🏫</span><b>图书馆</b><div data-place="图书馆"></div></div><div class="building square"><span>⛲</span><b>广场</b><div data-place="广场"></div></div><span class="tree t1">🌲</span><span class="tree t2">🌲</span><span class="tree t3">🌿</span></div>
+<div class="resources" id="resources"></div></section>
+<section class="panel event-panel"><div class="section-head"><h2>给生活一点波澜</h2><span>每次推进约半天中的一个时段</span></div><div class="events"><button data-event="power">⚡ 突然停电</button><button data-event="harvest">🥕 菜园丰收</button><button data-event="rumor">💬 神秘传闻</button><button data-event="festival">🎉 小镇节日</button></div><form id="event-form"><input id="custom-event" maxlength="200" placeholder="或者写一件事：一位陌生旅人来到了小镇…" aria-label="自定义事件"><button class="primary" type="submit">投放事件 ↗</button></form><div class="controls"><button id="step" class="primary">推进一回合 →</button><button id="auto">▶ 自动生活</button><span id="busy" role="status"></span></div><p class="hint">预设事件会改变资源；自定义事件在本地模式只记录，AI 模式下也影响对话。自动模式每 5 秒推进一次。</p></section>
+<section class="resident-section"><div class="section-head"><h2>认识你的邻居</h2><span>点击查看记忆</span></div><div id="residents" class="residents"></div></section></div>
+<aside class="panel timeline-panel"><div class="section-head"><h2>小镇里的声音</h2><span id="log-count">时间线</span></div><p class="timeline-intro">每个人都有自己的打算，<br>也会慢慢记住发生过的事。</p><div id="timeline" aria-live="polite"></div></aside></div>
+<p id="message" class="message" role="status"></p><footer>灵感镇 · 一个正在长大的实验 <span>存档保存在当前浏览器 · 最近 150 条动态</span></footer>
+</main><dialog id="memory-dialog"><button id="close-dialog" class="quiet">关闭 ×</button><div id="memory-content"></div></dialog><script src="app.js"></script></body></html>

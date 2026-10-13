@@ -1,5 +1,11 @@
 # 小项目与实验
 
+## 项目列表
+
+- [灵感镇 · AI Town](ai-town/README.md)：可交互的小镇实验，支持事件、资源、居民记忆与可选 AI 对话。
+
+## 新建实验
+
 每个实验放在独立目录里，例如 `projects/tiny-game/` 或 `projects/sorting-demo/`。按项目需要选择语言、框架和依赖。
 
 每个项目附一份 README，写清楚：
