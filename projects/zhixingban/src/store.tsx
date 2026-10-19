@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { AppData, AppStore, Task } from "./types";
+import type {
+  AlertRules,
+  AppData,
+  AppStore,
+  Monitor,
+  MonitoringEntry,
+  MonitorTarget,
+  Project,
+  Task,
+} from "./types";
 import { addDays, isDateKey, todayKey, weekStart } from "./dates";
+import { DEFAULT_ALERT_RULES } from "./alerts";
+import { isBlocked } from "./selectors";
 
 export function emptyData(): AppData {
   return {
@@ -104,6 +115,76 @@ function unique(items: { id: string }[], label: string): void {
     fail(`${label}存在重复 ID`);
 }
 
+function threshold(value: unknown, label: string, minimum = 1): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < minimum ||
+    value > 365
+  )
+    fail(`${label}应为 ${minimum} 至 365 之间的整数`);
+  return value;
+}
+
+function monitorMetadata(value: unknown): Monitor {
+  const item = object(value, "预警设置");
+  if (
+    item.preset !== undefined &&
+    item.preset !== "standard" &&
+    item.preset !== "bug"
+  )
+    fail("预警类型无效");
+  return {
+    preset: item.preset as Monitor["preset"],
+    startedAt: optional(item.startedAt, (value) =>
+      timestamp(value, "开始观察时间"),
+    ),
+    resumedAt: optional(item.resumedAt, (value) =>
+      timestamp(value, "恢复观察时间"),
+    ),
+    paused: optional(item.paused, (value) => bool(value, "暂停观察")),
+    stallDays: optional(item.stallDays, (value) =>
+      threshold(value, "停滞阈值"),
+    ),
+    blockedSince: optional(item.blockedSince, (value) =>
+      timestamp(value, "阻碍开始时间"),
+    ),
+    followUpDate: optional(item.followUpDate, (value) =>
+      calendarDate(value, "跟进日期"),
+    ),
+    checkpoint: optional(item.checkpoint, (value) => {
+      const checkpoint = object(value, "目标检查点");
+      return {
+        title: text(checkpoint.title, "目标名称", 500, true),
+        criteria: text(checkpoint.criteria, "达成条件", 10_000),
+        date: calendarDate(checkpoint.date, "目标检查日期"),
+        completedAt: optional(checkpoint.completedAt, (value) =>
+          timestamp(value, "目标达成时间"),
+        ),
+      };
+    }),
+  };
+}
+
+function alertRules(value: unknown): AlertRules {
+  const item = object(value, "预警原则");
+  const withDays = (key: keyof AlertRules, minimum = 1) => {
+    const rule = object(item[key], `预警原则 ${key}`);
+    return {
+      enabled: bool(rule.enabled, "原则启用状态"),
+      days: threshold(rule.days, "预警天数", minimum),
+    };
+  };
+  const checkpoint = object(item.checkpoint, "目标原则");
+  return {
+    projectStall: withDays("projectStall"),
+    bugStall: withDays("bugStall"),
+    checkpoint: { enabled: bool(checkpoint.enabled, "目标原则启用状态") },
+    deadline: withDays("deadline", 0),
+    blocked: withDays("blocked"),
+  };
+}
+
 /** Return a fresh, validated snapshot. No current data is changed by parsing or validation. */
 export function validateData(input: unknown): AppData {
   const root = object(input, "备份");
@@ -125,6 +206,9 @@ export function validateData(input: unknown): AppData {
       obsidianUrl: optional(item.obsidianUrl, link),
       createdAt: timestamp(item.createdAt, "项目创建时间"),
       updatedAt: timestamp(item.updatedAt, "项目更新时间"),
+      ...(item.monitor === undefined
+        ? {}
+        : { monitor: monitorMetadata(item.monitor) }),
       ...flag(item),
     };
   });
@@ -177,6 +261,9 @@ export function validateData(input: unknown): AppData {
       completedAt: optional(item.completedAt, (value) =>
         timestamp(value, "任务完成时间"),
       ),
+      ...(item.monitor === undefined
+        ? {}
+        : { monitor: monitorMetadata(item.monitor) }),
       ...flag(item),
     };
     if ((task.status === "done") !== Boolean(task.completedAt))
@@ -254,7 +341,70 @@ export function validateData(input: unknown): AppData {
     if (weekStart(week) !== week) fail("回顾笔记日期应为周一");
     reviewNotes[week] = text(note, "回顾笔记");
   }
-  return { schemaVersion: 1, tasks, projects, stages, events, reviewNotes };
+  const monitoring = optional(root.monitoring, (value) => {
+    const item = object(value, "预警数据");
+    const entries: MonitoringEntry[] = array(item.entries, "进展记录").map(
+      (value) => {
+        const entry = object(value, "进展记录");
+        if (entry.entityType !== "task" && entry.entityType !== "project")
+          fail("进展记录对象类型无效");
+        if (
+          !["progress", "completed", "checkpoint", "adjustment"].includes(
+            String(entry.kind),
+          )
+        )
+          fail("进展记录类型无效");
+        const result: MonitoringEntry = {
+          id: identifier(entry.id, "进展记录 ID"),
+          entityType: entry.entityType,
+          entityId: identifier(entry.entityId, "进展记录对象 ID"),
+          projectId: optional(entry.projectId, (value) =>
+            identifier(value, "进展所属项目 ID"),
+          ),
+          at: timestamp(entry.at, "进展记录时间"),
+          kind: entry.kind as MonitoringEntry["kind"],
+          note: text(entry.note, "进展内容", 10_000, true),
+          previousDate: optional(entry.previousDate, (value) =>
+            calendarDate(value, "原定日期"),
+          ),
+          newDate: optional(entry.newDate, (value) =>
+            calendarDate(value, "调整后日期"),
+          ),
+          ...flag(entry),
+        };
+        if (
+          !(result.entityType === "task" ? taskIds : projectIds).has(
+            result.entityId,
+          )
+        )
+          fail("进展记录引用的对象不存在");
+        if (result.projectId && !projectIds.has(result.projectId))
+          fail("进展记录引用的项目不存在");
+        if (
+          result.entityType === "project" &&
+          result.projectId &&
+          result.projectId !== result.entityId
+        )
+          fail("项目进展记录所属项目不一致");
+        return result;
+      },
+    );
+    unique(entries, "进展记录");
+    return {
+      enabledAt: timestamp(item.enabledAt, "预警启用时间"),
+      rules: alertRules(item.rules),
+      entries,
+    };
+  });
+  return {
+    schemaVersion: 1,
+    tasks,
+    projects,
+    stages,
+    events,
+    reviewNotes,
+    ...(monitoring ? { monitoring } : {}),
+  };
 }
 
 export function parseBackup(source: string): AppData {
@@ -359,6 +509,158 @@ const clean = (value: string | undefined) => value?.trim() || undefined;
 const editableText = (value: string | undefined) =>
   value?.trim() ? value : undefined;
 
+/** Add the new optional feature once, without pretending old edits were progress. */
+export function initializeMonitoring(data: AppData, time = now()): AppData {
+  return data.monitoring
+    ? data
+    : {
+        ...data,
+        monitoring: {
+          enabledAt: time,
+          rules: structuredClone(DEFAULT_ALERT_RULES),
+          entries: [],
+        },
+      };
+}
+
+function appendEntry(
+  data: AppData,
+  target: MonitorTarget,
+  kind: MonitoringEntry["kind"],
+  note: string,
+  time: string,
+  dates: Pick<MonitoringEntry, "previousDate" | "newDate"> = {},
+): AppData {
+  const current = initializeMonitoring(data, time);
+  const entity =
+    target.type === "task"
+      ? current.tasks.find((item) => item.id === target.id)
+      : current.projects.find((item) => item.id === target.id);
+  if (!entity) return current;
+  const entry: MonitoringEntry = {
+    id: uid(),
+    entityType: target.type,
+    entityId: target.id,
+    ...(target.type === "task" && "projectId" in entity && entity.projectId
+      ? { projectId: entity.projectId }
+      : {}),
+    at: time,
+    kind,
+    note,
+    ...dates,
+    ...(entity.demo === undefined ? {} : { demo: entity.demo }),
+  };
+  return {
+    ...current,
+    monitoring: {
+      ...current.monitoring!,
+      entries: [...current.monitoring!.entries, entry],
+    },
+  };
+}
+
+function startParent(
+  data: AppData,
+  projectId: string | undefined,
+  time: string,
+): AppData {
+  if (!projectId) return data;
+  return {
+    ...data,
+    projects: data.projects.map((project) =>
+      project.id === projectId && !project.monitor?.startedAt
+        ? { ...project, monitor: { ...project.monitor, startedAt: time } }
+        : project,
+    ),
+  };
+}
+
+function recordFollowUpAdjustment(
+  data: AppData,
+  target: MonitorTarget,
+  previous: Monitor | undefined,
+  next: Monitor | undefined,
+  edited: Monitor | undefined,
+  time: string,
+): AppData {
+  if (
+    !edited ||
+    !Object.hasOwn(edited, "followUpDate") ||
+    previous?.followUpDate === next?.followUpDate
+  )
+    return data;
+  return appendEntry(
+    data,
+    target,
+    "adjustment",
+    next?.followUpDate
+      ? previous?.followUpDate
+        ? "调整跟进日期"
+        : "安排下次跟进"
+      : "移除跟进日期",
+    time,
+    { previousDate: previous?.followUpDate, newDate: next?.followUpDate },
+  );
+}
+
+function recordCheckpointAdjustment(
+  data: AppData,
+  target: MonitorTarget,
+  previous: Monitor["checkpoint"],
+  next: Monitor["checkpoint"],
+  time: string,
+): AppData {
+  if (!previous) return data;
+  const dateChanged = previous.date !== next?.date;
+  const titleChanged = next && previous.title !== next.title;
+  const criteriaChanged = next && previous.criteria !== next.criteria;
+  if (!dateChanged && !titleChanged && !criteriaChanged) return data;
+  const note = !next
+    ? "移除目标检查点"
+    : titleChanged
+      ? `调整检查目标：${previous.title} → ${next.title}${dateChanged ? "（同时调整检查日期）" : ""}`
+      : dateChanged
+        ? "调整目标检查日期"
+        : `调整目标达成条件：${next.title}`;
+  return appendEntry(
+    data,
+    target,
+    "adjustment",
+    note,
+    time,
+    dateChanged ? { previousDate: previous.date, newDate: next?.date } : {},
+  );
+}
+
+/** One edit may release or block other tasks through dependencies or a project blocker. */
+export function reconcileBlockTransitions(
+  before: AppData,
+  after: AppData,
+  time = now(),
+): AppData {
+  const previousTasks = new Map(before.tasks.map((task) => [task.id, task]));
+  return {
+    ...after,
+    tasks: after.tasks.map((task) => {
+      const previous = previousTasks.get(task.id);
+      const wasBlocked = previous ? isBlocked(previous, before) : false;
+      const blocked = isBlocked(task, after);
+      if (wasBlocked === blocked) return task;
+      return {
+        ...task,
+        monitor: blocked
+          ? { ...task.monitor, blockedSince: time }
+          : {
+              ...task.monitor,
+              blockedSince: undefined,
+              followUpDate: undefined,
+              resumedAt: time,
+            },
+      };
+    }),
+  };
+}
+
 /** Normalizes task transitions while preserving the task's original identity and creation time. */
 export function applyTaskPatch(
   task: Task,
@@ -398,7 +700,229 @@ export function applyTaskPatch(
         ? task.completedAt
         : timestampValue
       : undefined;
+  let monitor = next.monitor ? { ...next.monitor } : undefined;
+  if (patch.status === "doing" && task.status !== "doing") {
+    monitor = {
+      ...monitor,
+      startedAt: monitor?.startedAt ?? timestampValue,
+      paused: false,
+    };
+    if (
+      task.status === "paused" ||
+      task.status === "done" ||
+      task.monitor?.paused
+    )
+      monitor.resumedAt = timestampValue;
+  } else if (patch.status === "paused") {
+    monitor = { ...monitor, paused: true };
+  } else if (
+    patch.status !== undefined &&
+    patch.status !== "done" &&
+    (task.status === "paused" || task.status === "done")
+  ) {
+    monitor = { ...monitor, paused: false, resumedAt: timestampValue };
+  }
+  const wasBlocked = isBlocked(task, data);
+  const blocked = isBlocked(next, data);
+  if (blocked && !wasBlocked) {
+    monitor = { ...monitor, blockedSince: timestampValue };
+  } else if (!blocked && wasBlocked) {
+    monitor = { ...monitor };
+    monitor.blockedSince = undefined;
+    monitor.followUpDate = undefined;
+    // Releasing a blocker starts a fresh observation period, without inventing progress.
+    monitor.resumedAt = timestampValue;
+  }
+  if (monitor) next.monitor = monitor;
   return next;
+}
+
+/** Task state and its progress history are committed in a single IndexedDB snapshot. */
+export function applyTaskUpdate(
+  data: AppData,
+  id: string,
+  patch: Partial<Task>,
+  time = now(),
+): AppData {
+  const previous = data.tasks.find((task) => task.id === id);
+  if (!previous) return data;
+  const next = applyTaskPatch(previous, patch, data, time);
+  let result = {
+    ...data,
+    tasks: data.tasks.map((task) => (task.id === id ? next : task)),
+  };
+  if (
+    (next.status === "doing" &&
+      (previous.status !== "doing" || previous.projectId !== next.projectId)) ||
+    (previous.status !== "done" && next.status === "done")
+  )
+    result = startParent(result, next.projectId, time);
+  const target: MonitorTarget = { type: "task", id };
+  if (previous.status !== "done" && next.status === "done")
+    result = appendEntry(
+      result,
+      target,
+      "completed",
+      `完成任务：${next.title}`,
+      time,
+    );
+  if (previous.dueDate && previous.dueDate !== next.dueDate)
+    result = appendEntry(
+      result,
+      target,
+      "adjustment",
+      next.dueDate ? "调整截止日期" : "移除截止日期",
+      time,
+      { previousDate: previous.dueDate, newDate: next.dueDate },
+    );
+  result = recordCheckpointAdjustment(
+    result,
+    target,
+    previous.monitor?.checkpoint,
+    next.monitor?.checkpoint,
+    time,
+  );
+  result = recordFollowUpAdjustment(
+    result,
+    target,
+    previous.monitor,
+    next.monitor,
+    patch.monitor,
+    time,
+  );
+  return reconcileBlockTransitions(data, result, time);
+}
+
+export function applyProjectUpdate(
+  data: AppData,
+  id: string,
+  patch: Partial<Project>,
+  time = now(),
+): AppData {
+  const previous = data.projects.find((project) => project.id === id);
+  if (!previous) return data;
+  const next = {
+    ...previous,
+    ...patch,
+    id: previous.id,
+    createdAt: previous.createdAt,
+    updatedAt: time,
+  };
+  next.blockedReason = editableText(next.blockedReason);
+  if (next.blockedReason && !previous.blockedReason?.trim())
+    next.monitor = { ...next.monitor, blockedSince: time };
+  if (!next.blockedReason && previous.blockedReason?.trim())
+    next.monitor = {
+      ...next.monitor,
+      blockedSince: undefined,
+      followUpDate: undefined,
+      resumedAt: time,
+    };
+  let result = {
+    ...data,
+    projects: data.projects.map((project) =>
+      project.id === id ? next : project,
+    ),
+  };
+  result = recordCheckpointAdjustment(
+    result,
+    { type: "project", id },
+    previous.monitor?.checkpoint,
+    next.monitor?.checkpoint,
+    time,
+  );
+  result = recordFollowUpAdjustment(
+    result,
+    { type: "project", id },
+    previous.monitor,
+    next.monitor,
+    patch.monitor,
+    time,
+  );
+  return reconcileBlockTransitions(data, result, time);
+}
+
+export function applyMonitorUpdate(
+  data: AppData,
+  target: MonitorTarget,
+  patch: Partial<Monitor>,
+  time = now(),
+): AppData {
+  const entity =
+    target.type === "task"
+      ? data.tasks.find((task) => task.id === target.id)
+      : data.projects.find((project) => project.id === target.id);
+  if (!entity) return data;
+  const monitor = { ...entity.monitor, ...patch };
+  if (entity.monitor?.paused && patch.paused === false)
+    monitor.resumedAt = time;
+  if (target.type === "task") {
+    const task = entity as Task;
+    const status =
+      patch.paused === true && task.status === "doing"
+        ? "paused"
+        : patch.paused === false && task.status === "paused"
+          ? "doing"
+          : task.status;
+    return applyTaskUpdate(data, target.id, { monitor, status }, time);
+  }
+  return applyProjectUpdate(data, target.id, { monitor }, time);
+}
+
+export function applyProgress(
+  data: AppData,
+  target: MonitorTarget,
+  note: string,
+  time = now(),
+): AppData {
+  const trimmed = note.trim();
+  if (!trimmed)
+    throw new Error(
+      "请用一句话记录获得的结果；排除一种方法、阴性结果也算进展。",
+    );
+  const entity =
+    target.type === "task"
+      ? data.tasks.find((task) => task.id === target.id)
+      : data.projects.find((project) => project.id === target.id);
+  if (!entity) return data;
+  let result = applyMonitorUpdate(
+    data,
+    target,
+    { startedAt: entity.monitor?.startedAt ?? time },
+    time,
+  );
+  if (target.type === "task")
+    result = startParent(result, (entity as Task).projectId, time);
+  return appendEntry(result, target, "progress", trimmed, time);
+}
+
+export function applyCheckpointCompletion(
+  data: AppData,
+  target: MonitorTarget,
+  time = now(),
+): AppData {
+  const entity =
+    target.type === "task"
+      ? data.tasks.find((task) => task.id === target.id)
+      : data.projects.find((project) => project.id === target.id);
+  const checkpoint = entity?.monitor?.checkpoint;
+  if (!checkpoint || checkpoint.completedAt) return data;
+  const result = applyMonitorUpdate(
+    data,
+    target,
+    {
+      startedAt: entity?.monitor?.startedAt ?? time,
+      checkpoint: { ...checkpoint, completedAt: time },
+    },
+    time,
+  );
+  return appendEntry(
+    result,
+    target,
+    "checkpoint",
+    `达成目标：${checkpoint.title}`,
+    time,
+  );
 }
 
 export function removeDemo(data: AppData): AppData {
@@ -428,6 +952,28 @@ export function removeDemo(data: AppData): AppData {
     stages,
     tasks,
     events: data.events.filter((event) => !event.demo),
+    ...(data.monitoring
+      ? {
+          monitoring: {
+            ...data.monitoring,
+            entries: data.monitoring.entries
+              .filter(
+                (entry) =>
+                  !entry.demo &&
+                  (entry.entityType === "task" ? taskIds : projectIds).has(
+                    entry.entityId,
+                  ),
+              )
+              .map((entry) => ({
+                ...entry,
+                projectId:
+                  entry.projectId && projectIds.has(entry.projectId)
+                    ? entry.projectId
+                    : undefined,
+              })),
+          },
+        }
+      : {}),
   };
 }
 
@@ -470,6 +1016,14 @@ export function createDemoData(today = todayKey()): AppData {
         createdAt: time,
         updatedAt: time,
         demo: true,
+        monitor: {
+          checkpoint: {
+            title: "确认代表性图像的分割方法",
+            criteria:
+              "完成代表性样本测试，记录结果并决定是否继续采用该方法。演示检查点，可自行修改。",
+            date: addDays(today, -1),
+          },
+        },
       },
       {
         id: projectB,
@@ -515,6 +1069,7 @@ export function createDemoData(today = todayKey()): AppData {
         projectId: projectA,
         stageId: stageB,
         blockedReason: "等待补充对照组图像",
+        monitor: { blockedSince: time, followUpDate: addDays(today, -1) },
         dueDate: addDays(today, 2),
         order: 2,
       }),
@@ -537,6 +1092,11 @@ export function createDemoData(today = todayKey()): AppData {
       },
     ],
     reviewNotes: {},
+    monitoring: {
+      enabledAt: time,
+      rules: structuredClone(DEFAULT_ALERT_RULES),
+      entries: [],
+    },
   };
 }
 
@@ -559,11 +1119,29 @@ export function useAppStore(): AppStore {
       .current!.load()
       .then((saved) => {
         if (cancelled) return;
-        const initial = saved ?? emptyData();
+        const original = saved ?? emptyData();
+        const initial = initializeMonitoring(original);
         dataRef.current = initial;
         loadedRef.current = true;
         setData(initial);
         setLoaded(true);
+        if (initial !== original) {
+          const current = ++revision.current;
+          setSaveState("saving");
+          persistence
+            .current!.save(initial)
+            .then(() => {
+              if (current === revision.current) setSaveState("saved");
+            })
+            .catch((reason) => {
+              if (current === revision.current) {
+                setSaveState("error");
+                setError(
+                  `预警启用时间保存失败：${String(reason instanceof Error ? reason.message : reason)}。请导出备份后重试。`,
+                );
+              }
+            });
+        }
       })
       .catch((reason) => {
         if (!cancelled) {
@@ -596,7 +1174,12 @@ export function useAppStore(): AppStore {
         return false;
       }
       try {
-        const next = validateData(mutate(dataRef.current));
+        const mutated = mutate(dataRef.current);
+        const next = validateData(
+          recover
+            ? mutated
+            : reconcileBlockTransitions(dataRef.current, mutated),
+        );
         if (recover) {
           loadedRef.current = true;
           loadFailed.current = false;
@@ -651,20 +1234,19 @@ export function useAppStore(): AppStore {
         createdAt: time,
         updatedAt: time,
       };
-      return commit((current) => ({
-        ...current,
-        tasks: [...current.tasks, applyTaskPatch(task, patch, current, time)],
-      }))
+      return commit((current) =>
+        applyTaskUpdate(
+          { ...current, tasks: [...current.tasks, task] },
+          id,
+          patch,
+          time,
+        ),
+      )
         ? id
         : "";
     },
     updateTask(id, patch) {
-      commit((current) => ({
-        ...current,
-        tasks: current.tasks.map((task) =>
-          task.id === id ? applyTaskPatch(task, patch, current) : task,
-        ),
-      }));
+      commit((current) => applyTaskUpdate(current, id, patch));
     },
     deleteTasks(ids) {
       const removed = new Set(ids);
@@ -676,6 +1258,17 @@ export function useAppStore(): AppStore {
             ...task,
             dependsOn: task.dependsOn?.filter((id) => !removed.has(id)),
           })),
+        ...(current.monitoring
+          ? {
+              monitoring: {
+                ...current.monitoring,
+                entries: current.monitoring.entries.filter(
+                  (entry) =>
+                    entry.entityType !== "task" || !removed.has(entry.entityId),
+                ),
+              },
+            }
+          : {}),
       }));
     },
     addProject(patch) {
@@ -702,20 +1295,7 @@ export function useAppStore(): AppStore {
         : "";
     },
     updateProject(id, patch) {
-      commit((current) => ({
-        ...current,
-        projects: current.projects.map((project) =>
-          project.id === id
-            ? {
-                ...project,
-                ...patch,
-                id: project.id,
-                createdAt: project.createdAt,
-                updatedAt: now(),
-              }
-            : project,
-        ),
-      }));
+      commit((current) => applyProjectUpdate(current, id, patch));
     },
     addStage(projectId, title) {
       const id = uid();
@@ -789,7 +1369,7 @@ export function useAppStore(): AppStore {
       }));
     },
     replaceData(next) {
-      commit(() => next, true);
+      commit(() => initializeMonitoring(next), true);
     },
     clearDemo() {
       commit(removeDemo);
@@ -809,6 +1389,24 @@ export function useAppStore(): AppStore {
           projects: [...current.projects, ...demo.projects],
           stages: [...current.stages, ...demo.stages],
           events: [...current.events, ...demo.events],
+        };
+      });
+    },
+    recordProgress(target, note) {
+      commit((current) => applyProgress(current, target, note));
+    },
+    updateMonitor(target, patch) {
+      commit((current) => applyMonitorUpdate(current, target, patch));
+    },
+    completeCheckpoint(target) {
+      commit((current) => applyCheckpointCompletion(current, target));
+    },
+    updateAlertRules(rules) {
+      commit((current) => {
+        const initialized = initializeMonitoring(current);
+        return {
+          ...initialized,
+          monitoring: { ...initialized.monitoring!, rules },
         };
       });
     },

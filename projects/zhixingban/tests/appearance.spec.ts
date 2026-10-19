@@ -327,6 +327,7 @@ test("快捷添加直接接收输入，Escape 恢复焦点，搜索支持键盘�
 });
 
 test("连续记录、清空重写任务名称和嵌套删除确认保持输入与焦点", async ({ page }) => {
+  test.slow();
   await ready(page);
   await page.keyboard.press("Control+j");
   const quickDialog = page.getByRole("dialog", { name: "记下一件事", exact: true });

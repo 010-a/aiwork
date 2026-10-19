@@ -23,6 +23,7 @@ import {
   Moon,
   Sun,
   CornerDownLeft,
+  ShieldAlert,
 } from "lucide-react";
 import type { Page, Task, ViewProps } from "./types";
 import { useAppStore, exportBackup, parseBackup } from "./store";
@@ -36,6 +37,8 @@ import TaskDetail from "./components/TaskDetail";
 import { Modal, EmptyState } from "./components/ui";
 import AppearanceSettings from "./components/AppearanceSettings";
 import { useAppearance } from "./appearance";
+import { AlertRulesSettings } from "./components/Monitoring";
+import { getAlerts } from "./alerts";
 
 const navigation = [
   { id: "home", label: "任务导航", icon: HomeIcon },
@@ -58,6 +61,7 @@ export default function App() {
   const store = useAppStore();
   const appearance = useAppearance();
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [searchIndex, setSearchIndex] = useState(0);
   const [page, setPage] = useState<Page>("home"),
     [projectId, setProjectId] = useState<string>(),
@@ -77,6 +81,11 @@ export default function App() {
     closeAdd = useCallback(() => setAddPatch(null), []),
     closeBackup = useCallback(() => setBackup(false), []);
   const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
+  const closeRules = useCallback(() => setRulesOpen(false), []);
+  const openAlertRules = useCallback(() => {
+    setSearch("");
+    setRulesOpen(true);
+  }, []);
   const navigate = useCallback((p: Page, id?: string) => {
     setPage(p);
     setProjectId(id);
@@ -135,7 +144,19 @@ export default function App() {
     if (detailId && !store.data.tasks.some((t) => t.id === detailId))
       setDetailId(undefined);
   }, [store.data.tasks, detailId]);
-  const props: ViewProps = { store, today, openTask, quickAdd, navigate };
+  const props: ViewProps = {
+    store,
+    today,
+    openTask,
+    quickAdd,
+    navigate,
+    openAlertRules,
+  };
+  const alertCount = new Set(
+    getAlerts(store.data, today).map(
+      (alert) => `${alert.target.type}:${alert.target.id}`,
+    ),
+  ).size;
   const inboxCount = store.data.tasks.filter(
     (t) => t.inbox && t.status !== "done",
   ).length;
@@ -293,6 +314,15 @@ export default function App() {
             <Database size={17} />
             <span>数据与备份</span>
             <ShieldCheck size={15} />
+          </button>
+          <button
+            className="backup-nav monitor-rules-nav"
+            aria-label="预警原则"
+            onClick={openAlertRules}
+          >
+            <ShieldAlert size={17} />
+            <span>预警原则</span>
+            {alertCount > 0 && <small>{alertCount}</small>}
           </button>
           <div
             className={`save-status ${store.saveState === "error" ? "save-error" : ""}`}
@@ -518,6 +548,7 @@ export default function App() {
           )}
         </div>
       )}
+      {rulesOpen && <AlertRulesSettings store={store} onClose={closeRules} />}
       {detailId && (
         <TaskDetail
           id={detailId}

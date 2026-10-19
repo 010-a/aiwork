@@ -15,6 +15,7 @@ import {
 import type { AppStore } from "../types";
 import { isBlocked } from "../selectors";
 import { Modal, useDialog } from "./ui";
+import { MonitorPanel } from "./Monitoring";
 
 function noteHref(value: string): string | undefined {
   const note = value.trim();
@@ -204,6 +205,11 @@ export default function TaskDetail({
                 有阻碍，处理后即可继续。完成按钮仍可手动使用。
               </div>
             )}
+            <MonitorPanel
+              store={store}
+              target={{ type: "task", id }}
+              today={today}
+            />
             <div className="detail-fields">
               <label className="form-label">
                 所属项目

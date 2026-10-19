@@ -13,6 +13,7 @@ import type { Task, ViewProps } from "../types";
 import { addDays, dateKey, weekStart } from "../dates";
 import { isArchivedTask, isBlocked, projectProgress } from "../selectors";
 import { EmptyState, ProgressBar, TaskRow } from "../components/ui";
+import { AlertsSection } from "../components/Monitoring";
 import "./calendar-review.css";
 
 const weekdayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -31,18 +32,57 @@ export default function Review({
   today,
 }: ViewProps) {
   const [week, setWeek] = useState(weekStart(today));
+  const [expandedEntriesWeek, setExpandedEntriesWeek] = useState<string>();
   const { data } = store;
   const end = addDays(week, 6);
   const nextWeek = addDays(week, 7);
   const nextEnd = addDays(week, 13);
   const withinWeek = (day?: string) =>
     Boolean(day && day >= week && day <= end);
+  const weeklyEntries = (data.monitoring?.entries ?? [])
+    .filter(
+      (entry) =>
+        ["progress", "checkpoint", "adjustment"].includes(entry.kind) &&
+        withinWeek(dateOfTimestamp(entry.at)),
+    )
+    .sort((a, b) => b.at.localeCompare(a.at));
+  const weeklyProgressEntries = weeklyEntries.filter(
+    (entry) => entry.kind === "progress" || entry.kind === "checkpoint",
+  );
+  const weeklyAdjustments = weeklyEntries.filter(
+    (entry) => entry.kind === "adjustment",
+  );
+  const entryProjectId = (entry: (typeof weeklyEntries)[number]) =>
+    entry.entityType === "project"
+      ? entry.entityId
+      : (entry.projectId ??
+        data.tasks.find((task) => task.id === entry.entityId)?.projectId);
   const complete = data.tasks
     .filter(
       (task) =>
         task.status === "done" && withinWeek(dateOfTimestamp(task.completedAt)),
     )
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
+  // Keep one completion per currently completed task, matching the chart above.
+  // A recorded completion belongs to its project at that moment, including no project.
+  const completedAtByTask = new Map(
+    data.tasks
+      .filter((task) => task.status === "done")
+      .map((task) => [task.id, task.completedAt]),
+  );
+  const loggedCompletionProjects = new Map<string, string | undefined>();
+  for (const entry of data.monitoring?.entries ?? []) {
+    if (
+      entry.kind === "completed" &&
+      entry.entityType === "task" &&
+      completedAtByTask.get(entry.entityId) === entry.at
+    )
+      loggedCompletionProjects.set(entry.entityId, entry.projectId);
+  }
+  const completionProjectId = (task: Task) =>
+    loggedCompletionProjects.has(task.id)
+      ? loggedCompletionProjects.get(task.id)
+      : task.projectId;
   const unfinished = data.tasks
     .filter(
       (task) =>
@@ -65,14 +105,17 @@ export default function Review({
   const blockedProjects = data.projects.filter(
     (project) => !project.archived && project.blockedReason?.trim(),
   );
-  const progressedProjects = data.projects.filter((project) =>
-    data.tasks.some(
-      (task) =>
-        task.projectId === project.id &&
-        (withinWeek(dateOfTimestamp(task.createdAt)) ||
-          (task.status === "done" &&
-            withinWeek(dateOfTimestamp(task.completedAt)))),
-    ),
+  const progressedProjects = data.projects.filter(
+    (project) =>
+      data.tasks.some(
+        (task) =>
+          task.status === "done" &&
+          completionProjectId(task) === project.id &&
+          withinWeek(dateOfTimestamp(task.completedAt)),
+      ) ||
+      weeklyProgressEntries.some(
+        (entry) => entryProjectId(entry) === project.id,
+      ),
   );
   const nextTasks = data.tasks
     .filter(
@@ -250,6 +293,112 @@ export default function Review({
         </section>
       </div>
 
+      <section className="card review-panel">
+        <div className="section-head">
+          <div>
+            <h2>
+              <NotebookPen size={18} />
+              这一周，获得了什么、调整了什么
+            </h2>
+            <p className="muted">
+              {weeklyProgressEntries.length} 条进展 · {weeklyAdjustments.length}{" "}
+              条调整。阴性结果、排除假设也算有效进展。
+            </p>
+          </div>
+          <span className="badge">{weeklyEntries.length} 条记录</span>
+        </div>
+        {weeklyEntries.length ? (
+          <>
+            <div className="review-block-list">
+              {(expandedEntriesWeek === week
+                ? weeklyEntries
+                : weeklyEntries.slice(0, 5)
+              ).map((entry) => {
+                const entity =
+                  entry.entityType === "project"
+                    ? data.projects.find(
+                        (project) => project.id === entry.entityId,
+                      )
+                    : data.tasks.find((task) => task.id === entry.entityId);
+                const label =
+                  entry.kind === "adjustment"
+                    ? "调整计划"
+                    : entry.kind === "checkpoint"
+                      ? "目标达成"
+                      : "记录进展";
+                return (
+                  <button
+                    className="review-block review-progress-entry"
+                    type="button"
+                    key={entry.id}
+                    disabled={!entity}
+                    onClick={() =>
+                      entry.entityType === "project"
+                        ? navigate("projects", entry.entityId)
+                        : openTask(entry.entityId)
+                    }
+                  >
+                    <NotebookPen size={16} aria-hidden="true" />
+                    <div>
+                      <strong>
+                        {entity?.title ?? "已删除的事项"}
+                        <small> · {label}</small>
+                      </strong>
+                      <p>{entry.note}</p>
+                      {(entry.previousDate || entry.newDate) && (
+                        <p>
+                          {entry.previousDate || "未设置日期"} →{" "}
+                          {entry.newDate || "未设置日期"}
+                        </p>
+                      )}
+                      <small>
+                        {prettyDate(dateOfTimestamp(entry.at))} ·{" "}
+                        {entry.entityType === "project" ? "项目" : "任务"}
+                      </small>
+                    </div>
+                    {entity && <ArrowRight size={15} aria-hidden="true" />}
+                  </button>
+                );
+              })}
+            </div>
+            {weeklyEntries.length > 5 && (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                aria-expanded={expandedEntriesWeek === week}
+                onClick={() =>
+                  setExpandedEntriesWeek(
+                    expandedEntriesWeek === week ? undefined : week,
+                  )
+                }
+              >
+                {expandedEntriesWeek === week
+                  ? "收起记录"
+                  : `查看全部 ${weeklyEntries.length} 条记录`}
+              </button>
+            )}
+          </>
+        ) : (
+          <EmptyState
+            title="这一周还没有额外的进展记录"
+            description="在任务或项目中记录一句发现、实验结果或调整，回顾会自动汇总；不用重复填写。"
+          />
+        )}
+      </section>
+
+      <div>
+        <p className="muted review-caption">
+          以下预警反映当前状态，不是所选周的历史快照。
+        </p>
+        <AlertsSection
+          store={store}
+          today={today}
+          openTask={openTask}
+          navigate={navigate}
+          compact
+        />
+      </div>
+
       <div className="review-grid">
         <section className="card review-panel">
           <div className="section-head">
@@ -332,7 +481,7 @@ export default function Review({
               项目在怎样向前
             </h2>
             <p className="muted">
-              该周有新增或完成任务的项目；进度显示当前最新状态。
+              该周有新增、完成任务或有效进展记录的项目；进度显示当前最新状态。
             </p>
           </div>
           <button
@@ -348,12 +497,15 @@ export default function Review({
             {progressedProjects.map((project) => {
               const progress = projectProgress(project.id, data);
               const weeklyCompleted = complete.filter(
-                (task) => task.projectId === project.id,
+                (task) => completionProjectId(task) === project.id,
               ).length;
               const newTasks = data.tasks.filter(
                 (task) =>
                   task.projectId === project.id &&
                   withinWeek(dateOfTimestamp(task.createdAt)),
+              ).length;
+              const progressEntries = weeklyProgressEntries.filter(
+                (entry) => entryProjectId(entry) === project.id,
               ).length;
               return (
                 <button
@@ -374,6 +526,7 @@ export default function Review({
                   <div className="review-project-meta">
                     <span>
                       该周完成 {weeklyCompleted} · 新增 {newTasks}
+                      {progressEntries > 0 && ` · 进展记录 ${progressEntries}`}
                     </span>
                     <span>
                       {progress.done}/{progress.total} 项完成
@@ -385,8 +538,8 @@ export default function Review({
           </div>
         ) : (
           <EmptyState
-            title="这一周暂无项目任务变化"
-            description="新增或完成项目任务后，这里会自动汇总。"
+            title="这一周暂无项目进展记录"
+            description="完成项目任务、记录结果或确认目标达成后，这里会自动汇总。"
           />
         )}
       </section>

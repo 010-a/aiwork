@@ -13,9 +13,11 @@
 - `src/types.ts`：唯一领域模型与页面契约。
 - `src/appearance.ts`：本机外观偏好、系统明暗/动态效果与跨窗口同步；使用 `zhixingban-appearance-v1`，不修改任务 schema 或 IndexedDB。`index.html` 的首次绘制脚本使用同一白名单和默认值，改动时需同步。
 - `src/store.tsx`：CRUD、IndexedDB 串行保存与多窗口冲突保护、严格备份校验、演示数据。
+- `src/alerts.ts`：无副作用的预警规则（自然日/工作日）、有效进展选择器；`components/Monitoring.tsx` / `monitoring.css`：合并预警、进展与检查点、原则设置。任务/项目的可选 monitor 和根 monitoring 沿用 schemaVersion 1；旧数据首次启用时间必须持久保存，改标题/改期不算进展，暂停/等待状态不能伪造投入工时。规则、历史与检查点必须通过严格备份校验，删除/清演示要同步清理关联记录。
 - `src/dates.ts` / `src/selectors.ts`：本地日期与无副作用的统计、建议规则。
 - `src/App.tsx`：固定导航、全局搜索、新增、备份；`components/`：共享任务行、弹窗与右侧详情。
 - `src/pages/Core.tsx`：首页、收集、今日；其他三个页面各自独立。CSS 统一在 `styles.css` 和 `pages/calendar-review.css`。
+- `tests/alerts.test.ts` / `tests/monitoring.spec.ts`：停滞/目标/日期/阻碍边界、旧数据、进展和调整历史、原则持久化与备份恢复、大字深色预警截图。
 - `tests/data.test.ts`：领域规则、坏备份及真实 IndexedDB 语义；`tests/app.spec.ts`：浏览器流程与六页截图。
 - `src/experience.css`：全局语义色板、明暗/强调色、密度及交互过渡。其他样式须使用共享 token，避免写死浅色背景；对话框渲染到 body，主题属性必须位于 html。遵循系统减少动态效果，避免全属性动画。全局文字使用 rem，四档根字号 14/16/18/20px，默认 16px；新增字体样式不得写死 px。放大后要允许换行、滚动，核查六页及弹窗在 1440px/1920px 的布局。
 - `tests/appearance.test.ts` / `tests/appearance.spec.ts`：偏好校验、主题和系统变化、持久化、旧偏好兼容、字号、密度及键盘交互；Vitest 配置仅包含 `*.test.ts`，与 Playwright 分开。

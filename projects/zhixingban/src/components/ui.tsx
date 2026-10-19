@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import type { Task, AppStore } from "../types";
 import { isBlocked } from "../selectors";
+import { getTargetAlerts } from "../alerts";
+import { todayKey } from "../dates";
 
 interface DialogEntry {
   element: HTMLElement;
@@ -291,6 +293,11 @@ export function TaskRow({
 }) {
   const project = store.data.projects.find((p) => p.id === task.projectId);
   const blocked = isBlocked(task, store.data);
+  const alerts = getTargetAlerts(
+    store.data,
+    { type: "task", id: task.id },
+    todayKey(),
+  );
   return (
     <div
       className={`task-row ${compact ? "compact" : ""} ${task.status === "done" ? "is-done" : ""}`}
@@ -333,6 +340,12 @@ export function TaskRow({
             <span className="text-green">进行中</span>
           )}
           {task.status === "paused" && <span>已暂停</span>}
+          {!!alerts.length && (
+            <span className="task-alert-badge">
+              <AlertCircle size={12} />
+              需调整 · {alerts.length}
+            </span>
+          )}
           {task.inbox && !project && <span>尚未整理</span>}
         </span>
       </button>

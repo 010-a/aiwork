@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import type { Project, Stage, Task, ViewProps } from "../types";
 import { isBlocked, projectProgress, recommendTasks } from "../selectors";
+import { getAlerts } from "../alerts";
+import { MonitorPanel } from "../components/Monitoring";
 import {
   EmptyState,
   Modal,
@@ -48,6 +50,7 @@ export default function Projects({
   selectedProjectId,
 }: ViewProps & { selectedProjectId?: string }) {
   const { data } = store;
+  const alerts = getAlerts(data, today);
   const [selectedId, setSelectedId] = useState(selectedProjectId);
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -284,6 +287,15 @@ export default function Projects({
               const itemBlocked = data.tasks.filter(
                 (task) => task.projectId === item.id && isBlocked(task, data),
               ).length;
+              const itemAlertCount = alerts.filter((alert) =>
+                alert.target.type === "project"
+                  ? alert.target.id === item.id
+                  : data.tasks.some(
+                      (task) =>
+                        task.id === alert.target.id &&
+                        task.projectId === item.id,
+                    ),
+              ).length;
               return (
                 <button
                   key={item.id}
@@ -312,7 +324,15 @@ export default function Projects({
                     <span>
                       {itemProgress.done} / {itemProgress.total} 项完成
                     </span>
-                    {item.blockedReason?.trim() || itemBlocked > 0 ? (
+                    {itemAlertCount > 0 ? (
+                      <span
+                        className="text-warning"
+                        title="项目及其任务当前需要检查的预警"
+                      >
+                        <AlertCircle size={13} />
+                        {itemAlertCount} 项预警
+                      </span>
+                    ) : item.blockedReason?.trim() || itemBlocked > 0 ? (
                       <span className="text-warning">
                         <AlertCircle size={13} />
                         有阻碍
@@ -400,6 +420,12 @@ export default function Projects({
                   )}
                 </div>
               </div>
+
+              <MonitorPanel
+                store={store}
+                target={{ type: "project", id: project.id }}
+                today={today}
+              />
 
               <div className="project-detail-grid">
                 <section className="card project-stages">

@@ -37,10 +37,13 @@ import {
   recommendTasks,
 } from "../selectors";
 import { weekStart, addDays, dateKey } from "../dates";
+import { AlertsSection } from "../components/Monitoring";
+import { getAlerts } from "../alerts";
 
 export function Home(props: ViewProps) {
   const { store, today, navigate, openTask, quickAdd } = props;
   const { data } = store;
+  const alerts = getAlerts(data, today);
   const projects = data.projects.filter((p) => !p.archived),
     todayTasks = getTodayTasks(data, today),
     recs = recommendTasks(data, today),
@@ -170,6 +173,13 @@ export function Home(props: ViewProps) {
           </button>
         ))}
       </div>
+      <AlertsSection
+        store={store}
+        today={today}
+        openTask={openTask}
+        navigate={navigate}
+        onOpenRules={props.openAlertRules}
+      />
       <div className="home-grid">
         <section className="card task-map-card">
           <SectionHeader
@@ -217,6 +227,17 @@ export function Home(props: ViewProps) {
                       (r) => r.task.projectId === p.id,
                     )?.task;
                   const Icon = icons[index % icons.length];
+                  const adjustmentCount = new Set(
+                    alerts
+                      .filter((alert) =>
+                        alert.target.type === "project"
+                          ? alert.target.id === p.id
+                          : tasks.some((task) => task.id === alert.target.id),
+                      )
+                      .map(
+                        (alert) => `${alert.target.type}:${alert.target.id}`,
+                      ),
+                  ).size;
                   return (
                     <button
                       className="map-node"
@@ -246,6 +267,12 @@ export function Home(props: ViewProps) {
                           待办
                         </span>
                         <span>{progress.done} 已完成</span>
+                        {adjustmentCount > 0 && (
+                          <span className="task-alert-badge">
+                            <CircleAlert size={12} />
+                            {adjustmentCount} 项需调整
+                          </span>
+                        )}
                       </div>
                       <ProgressBar value={progress.percent} />
                       <p>
@@ -645,6 +672,14 @@ export function Today(props: ViewProps) {
           添加今日任务
         </button>
       </div>
+      <AlertsSection
+        store={store}
+        today={today}
+        openTask={openTask}
+        navigate={props.navigate}
+        compact
+        onOpenRules={props.openAlertRules}
+      />
       <div className="today-grid">
         <div className="page-stack">
           <section className="focus-card">
