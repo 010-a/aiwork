@@ -51,6 +51,7 @@ aiwork/
 
 ## 已有实验
 
+- [知行办](projects/zhixingban/README.md)：本地个人任务管理工具，包含任务地图、收集、今日执行、项目、日历与自动回顾，支持离线保存和 JSON 备份。
 - [灵感镇 · AI Town](projects/ai-town/README.md)：五位居民的小镇模拟，可以投放事件、观察对话和近期记忆。无需密钥即可体验规则模拟，也支持接入真实 AI 对话。
 
 [![灵感镇界面预览：小镇地图、五位居民、事件控制和对话时间线](projects/ai-town/docs/town-preview.png)](projects/ai-town/README.md)

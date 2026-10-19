@@ -2,6 +2,7 @@
 
 ## 项目列表
 
+- [知行办](zhixingban/README.md)：Windows 优先的本地个人任务管理工具，六个页面共享任务数据，支持离线运行和 JSON 备份恢复。
 - [灵感镇 · AI Town](ai-town/README.md)：可交互的小镇实验，支持事件、资源、居民记忆与可选 AI 对话。
 
 ## 新建实验

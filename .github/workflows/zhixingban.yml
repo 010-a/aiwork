@@ -1,0 +1,34 @@
+name: Zhixingban checks
+on:
+  push:
+    paths: ['projects/zhixingban/**', '.github/workflows/zhixingban.yml']
+  pull_request:
+    paths: ['projects/zhixingban/**', '.github/workflows/zhixingban.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/zhixingban
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: projects/zhixingban/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zhixingban-browser-checks
+          path: |
+            projects/zhixingban/work/screenshots/
+            projects/zhixingban/test-results/
+          retention-days: 7
