@@ -19,6 +19,10 @@ import {
   CircleAlert,
   Check,
   LoaderCircle,
+  Palette,
+  Moon,
+  Sun,
+  CornerDownLeft,
 } from "lucide-react";
 import type { Page, Task, ViewProps } from "./types";
 import { useAppStore, exportBackup, parseBackup } from "./store";
@@ -29,7 +33,9 @@ import Projects from "./pages/Projects";
 import Calendar from "./pages/Calendar";
 import Review from "./pages/Review";
 import TaskDetail from "./components/TaskDetail";
-import { Modal, TaskRow, EmptyState } from "./components/ui";
+import { Modal, EmptyState } from "./components/ui";
+import AppearanceSettings from "./components/AppearanceSettings";
+import { useAppearance } from "./appearance";
 
 const navigation = [
   { id: "home", label: "任务导航", icon: HomeIcon },
@@ -50,6 +56,9 @@ function download(text: string, name: string) {
 }
 export default function App() {
   const store = useAppStore();
+  const appearance = useAppearance();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [searchIndex, setSearchIndex] = useState(0);
   const [page, setPage] = useState<Page>("home"),
     [projectId, setProjectId] = useState<string>(),
     [detailId, setDetailId] = useState<string>(),
@@ -61,9 +70,13 @@ export default function App() {
     [today, setToday] = useState(todayKey);
   const searchRef = useRef<HTMLInputElement>(null),
     importRef = useRef<HTMLInputElement>(null);
+  const searchResultsRef = useRef<HTMLDivElement>(null);
+  const quickInputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
   const closeDetail = useCallback(() => setDetailId(undefined), []),
     closeAdd = useCallback(() => setAddPatch(null), []),
     closeBackup = useCallback(() => setBackup(false), []);
+  const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
   const navigate = useCallback((p: Page, id?: string) => {
     setPage(p);
     setProjectId(id);
@@ -71,6 +84,8 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
   const quickAdd = useCallback((patch: Partial<Task> = {}) => {
+    composingRef.current = false;
+    setSearch("");
     setAddTitle("");
     setAddPatch(patch);
   }, []);
@@ -81,6 +96,7 @@ export default function App() {
   useEffect(() => {
     const t = setInterval(() => setToday(todayKey()), 30000);
     const key = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"]')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -96,6 +112,19 @@ export default function App() {
       document.removeEventListener("keydown", key);
     };
   }, [quickAdd]);
+  useEffect(() => {
+    if (!search.trim()) return;
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !searchRef.current?.parentElement?.contains(target) &&
+        !searchResultsRef.current?.contains(target)
+      )
+        setSearch("");
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [search]);
   useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(""), 4500);
@@ -131,13 +160,45 @@ export default function App() {
           .includes(search.trim().toLowerCase()),
       )
     : [];
-  const add = () => {
+  const searchEntries = [
+    ...matchedProjects.map((project) => ({
+      id: project.id,
+      kind: "project" as const,
+      title: project.title,
+      subtitle: project.archived ? "已归档项目" : "项目",
+    })),
+    ...matches.map((task) => ({
+      id: task.id,
+      kind: "task" as const,
+      title: task.title,
+      subtitle:
+        task.status === "done"
+          ? "已完成"
+          : task.inbox
+            ? "收集箱"
+            : store.data.projects.find(
+                (project) => project.id === task.projectId,
+              )?.title || "独立任务",
+    })),
+  ];
+  const selectSearchEntry = (index: number) => {
+    const entry = searchEntries[index];
+    if (!entry) return;
+    if (entry.kind === "project") navigate("projects", entry.id);
+    else openTask(entry.id);
+  };
+  const add = (keepAdding = false) => {
     if (!addTitle.trim()) return;
     const id = store.addTask(addTitle.trim(), addPatch || {});
     if (!id) return;
-    setAddPatch(null);
-    setNotice("已记下这件事");
-    if (addPatch?.projectId) setDetailId(id);
+    setNotice(keepAdding ? "已记下，继续添加下一件" : "已记下这件事");
+    if (keepAdding) {
+      setAddTitle("");
+      quickInputRef.current?.focus();
+    } else {
+      setAddPatch(null);
+      if (addPatch?.projectId) setDetailId(id);
+    }
   };
   const importData = async (file: File) => {
     try {
@@ -183,6 +244,7 @@ export default function App() {
             <button
               key={n.id}
               className={`nav-item ${page === n.id ? "active" : ""}`}
+              aria-current={page === n.id ? "page" : undefined}
               onClick={() => navigate(n.id)}
             >
               <n.icon size={21} />
@@ -208,6 +270,25 @@ export default function App() {
               一步一步，向前生长。
             </p>
           </div>
+          <button
+            className="backup-nav appearance-nav"
+            aria-label="外观与体验"
+            title="外观与体验"
+            onClick={() => {
+              setSearch("");
+              setAppearanceOpen(true);
+            }}
+          >
+            <Palette size={17} />
+            <span>外观与体验</span>
+            <small>
+              {appearance.preferences.mode === "system"
+                ? "自动"
+                : appearance.resolvedTheme === "dark"
+                  ? "深色"
+                  : "浅色"}
+            </small>
+          </button>
           <button className="backup-nav" onClick={() => setBackup(true)}>
             <Database size={17} />
             <span>数据与备份</span>
@@ -234,9 +315,45 @@ export default function App() {
               aria-label="搜索任务和项目"
               placeholder="搜索任务、项目或记录…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              aria-controls={
+                search.trim() ? "global-search-results" : undefined
+              }
+              aria-activedescendant={
+                search.trim() && searchEntries.length
+                  ? `search-entry-${Math.min(searchIndex, searchEntries.length - 1)}`
+                  : undefined
+              }
+              autoComplete="off"
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setSearchIndex(0);
+              }}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
                 if (e.key === "Escape") setSearch("");
+                if (
+                  (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+                  searchEntries.length
+                ) {
+                  e.preventDefault();
+                  setSearchIndex(
+                    (index) =>
+                      (index +
+                        (e.key === "ArrowDown" ? 1 : -1) +
+                        searchEntries.length) %
+                      searchEntries.length,
+                  );
+                }
+                if (
+                  e.key === "Enter" &&
+                  search.trim() &&
+                  searchEntries.length
+                ) {
+                  e.preventDefault();
+                  selectSearchEntry(
+                    Math.min(searchIndex, searchEntries.length - 1),
+                  );
+                }
               }}
             />
             {search ? (
@@ -254,6 +371,30 @@ export default function App() {
             )}
           </div>
           <div className="topbar-right">
+            <button
+              className="icon-btn theme-toggle"
+              aria-label={
+                appearance.resolvedTheme === "dark"
+                  ? "切换到浅色模式"
+                  : "切换到深色模式"
+              }
+              title={
+                appearance.resolvedTheme === "dark"
+                  ? "切换到浅色模式"
+                  : "切换到深色模式"
+              }
+              onClick={() =>
+                appearance.updatePreferences({
+                  mode: appearance.resolvedTheme === "dark" ? "light" : "dark",
+                })
+              }
+            >
+              {appearance.resolvedTheme === "dark" ? (
+                <Sun size={18} />
+              ) : (
+                <Moon size={18} />
+              )}
+            </button>
             <span className="local-badge">
               <span />
               本地工作空间
@@ -312,19 +453,21 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {page === "home" ? (
-                <Home {...props} />
-              ) : page === "inbox" ? (
-                <Inbox {...props} />
-              ) : page === "today" ? (
-                <Today {...props} />
-              ) : page === "projects" ? (
-                <Projects {...props} selectedProjectId={projectId} />
-              ) : page === "calendar" ? (
-                <Calendar {...props} />
-              ) : (
-                <Review {...props} />
-              )}
+              <div className="page-view" key={page}>
+                {page === "home" ? (
+                  <Home {...props} />
+                ) : page === "inbox" ? (
+                  <Inbox {...props} />
+                ) : page === "today" ? (
+                  <Today {...props} />
+                ) : page === "projects" ? (
+                  <Projects {...props} selectedProjectId={projectId} />
+                ) : page === "calendar" ? (
+                  <Calendar {...props} />
+                ) : (
+                  <Review {...props} />
+                )}
+              </div>
               <footer className="page-footer">
                 <Sprout size={13} />
                 知行办 <span>·</span> 复杂的事，清楚地做。
@@ -334,9 +477,9 @@ export default function App() {
         </main>
       </div>
       {search.trim() && (
-        <div className="search-results card">
+        <div className="search-results card" ref={searchResultsRef}>
           <div className="search-result-head">
-            搜索结果 <span>{matches.length + matchedProjects.length} 项</span>
+            搜索结果 <span>{searchEntries.length} 项 · ↑↓ 选择，回车打开</span>
           </div>
           {!matches.length && !matchedProjects.length ? (
             <EmptyState
@@ -344,29 +487,34 @@ export default function App() {
               description="换一个关键词，或直接新建任务。"
             />
           ) : (
-            <>
-              {matchedProjects.map((p) => (
+            <div
+              role="listbox"
+              aria-label="搜索结果"
+              id="global-search-results"
+            >
+              {searchEntries.map((entry, index) => (
                 <button
-                  className="project-search-item"
-                  key={p.id}
-                  onClick={() => navigate("projects", p.id)}
+                  id={`search-entry-${index}`}
+                  role="option"
+                  aria-selected={index === searchIndex}
+                  className={`search-result-item ${index === searchIndex ? "selected" : ""}`}
+                  key={`${entry.kind}-${entry.id}`}
+                  onMouseEnter={() => setSearchIndex(index)}
+                  onClick={() => selectSearchEntry(index)}
                 >
-                  <FolderOpen size={18} />
-                  <strong>{p.title}</strong>
-                  <span>{p.archived ? "已归档" : "项目"}</span>
-                  <ArrowRight size={15} />
+                  {entry.kind === "project" ? (
+                    <FolderOpen size={18} />
+                  ) : (
+                    <Check size={18} />
+                  )}
+                  <span>
+                    <strong>{entry.title}</strong>
+                    <small>{entry.subtitle}</small>
+                  </span>
+                  <CornerDownLeft size={15} />
                 </button>
               ))}
-              {matches.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  store={store}
-                  openTask={openTask}
-                  compact
-                />
-              ))}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -384,18 +532,59 @@ export default function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              add();
+              if (!composingRef.current) add();
             }}
           >
             <input
               className="field quick-add-input"
+              ref={quickInputRef}
               aria-label="新任务标题"
               maxLength={500}
               placeholder="例如：测试 Spotiflow 分割效果"
               autoFocus
               value={addTitle}
               onChange={(e) => setAddTitle(e.target.value)}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  add(true);
+                }
+              }}
             />
+            <div className="quick-add-options">
+              <button
+                type="button"
+                className={`schedule-chip ${addPatch.plannedDate === today ? "selected" : ""}`}
+                aria-pressed={addPatch.plannedDate === today}
+                onClick={() =>
+                  setAddPatch(
+                    (patch) =>
+                      patch && {
+                        ...patch,
+                        plannedDate:
+                          patch.plannedDate === today ? undefined : today,
+                        inbox: patch.projectId
+                          ? false
+                          : patch.plannedDate === today,
+                      },
+                  )
+                }
+              >
+                <CalendarDays size={14} />
+                安排今天{addPatch.plannedDate === today && <Check size={12} />}
+              </button>
+              <span>回车保存 · Shift + 回车连续记录</span>
+            </div>
             {addPatch.plannedDate && (
               <p className="muted">计划日期：{addPatch.plannedDate}</p>
             )}
@@ -408,6 +597,14 @@ export default function App() {
                     : "默认放进收集箱，无需分类"}
               </span>
               <button
+                className="btn btn-ghost"
+                disabled={!addTitle.trim()}
+                type="button"
+                onClick={() => add(true)}
+              >
+                保存并继续
+              </button>
+              <button
                 className="btn btn-primary"
                 disabled={!addTitle.trim()}
                 type="submit"
@@ -417,6 +614,9 @@ export default function App() {
             </div>
           </form>
         </Modal>
+      )}
+      {appearanceOpen && (
+        <AppearanceSettings {...appearance} onClose={closeAppearance} />
       )}
       {backup && (
         <Modal title="数据与备份" onClose={closeBackup}>
@@ -505,7 +705,7 @@ export default function App() {
         </Modal>
       )}
       {notice && (
-        <div className="toast" role="status">
+        <div className="toast" role="status" key={notice}>
           <Check size={17} />
           {notice}
         </div>

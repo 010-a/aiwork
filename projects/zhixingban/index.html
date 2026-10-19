@@ -10,6 +10,53 @@
     />
     <title>知行办 · 让重要的事，有序发生</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <style>
+      html {
+        background: #f5f5f7;
+        color-scheme: light;
+      }
+      html[data-theme="dark"] {
+        background: #151619;
+        color-scheme: dark;
+      }
+    </style>
+    <script>
+      (() => {
+        let preferences = {};
+        try {
+          preferences = JSON.parse(
+            localStorage.getItem("zhixingban-appearance-v1") || "{}",
+          );
+        } catch {}
+        if (!preferences || typeof preferences !== "object") preferences = {};
+        const root = document.documentElement;
+        const mode = ["light", "dark", "system"].includes(preferences.mode)
+          ? preferences.mode
+          : "system";
+        root.dataset.theme =
+          mode === "dark" ||
+          (mode === "system" &&
+            matchMedia("(prefers-color-scheme: dark)").matches)
+            ? "dark"
+            : "light";
+        root.dataset.accent = [
+          "blue",
+          "purple",
+          "green",
+          "rose",
+          "orange",
+          "graphite",
+        ].includes(preferences.accent)
+          ? preferences.accent
+          : "blue";
+        root.dataset.density =
+          preferences.density === "compact" ? "compact" : "comfortable";
+        root.dataset.reduceMotion = String(
+          preferences.reduceMotion === true ||
+            matchMedia("(prefers-reduced-motion: reduce)").matches,
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

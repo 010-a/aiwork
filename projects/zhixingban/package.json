@@ -1,13 +1,13 @@
 {
   "name": "zhixingban",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
-    "test": "vitest run tests/data.test.ts",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {

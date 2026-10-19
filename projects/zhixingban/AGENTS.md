@@ -11,11 +11,14 @@
 ## 文件位置
 
 - `src/types.ts`：唯一领域模型与页面契约。
+- `src/appearance.ts`：本机外观偏好、系统明暗/动态效果与跨窗口同步；使用 `zhixingban-appearance-v1`，不修改任务 schema 或 IndexedDB。`index.html` 的首次绘制脚本使用同一白名单和默认值，改动时需同步。
 - `src/store.tsx`：CRUD、IndexedDB 串行保存与多窗口冲突保护、严格备份校验、演示数据。
 - `src/dates.ts` / `src/selectors.ts`：本地日期与无副作用的统计、建议规则。
 - `src/App.tsx`：固定导航、全局搜索、新增、备份；`components/`：共享任务行、弹窗与右侧详情。
 - `src/pages/Core.tsx`：首页、收集、今日；其他三个页面各自独立。CSS 统一在 `styles.css` 和 `pages/calendar-review.css`。
 - `tests/data.test.ts`：领域规则、坏备份及真实 IndexedDB 语义；`tests/app.spec.ts`：浏览器流程与六页截图。
+- `src/experience.css`：全局语义色板、明暗/强调色、密度及交互过渡。其他样式须使用共享 token，避免写死浅色背景；对话框渲染到 body，主题属性必须位于 html。遵循系统减少动态效果，避免全属性动画。
+- `tests/appearance.test.ts` / `tests/appearance.spec.ts`：偏好校验、主题和系统变化、持久化、密度及键盘交互；Vitest 配置仅包含 `*.test.ts`，与 Playwright 分开。
 - `start.cmd` / `start.sh`：安装、构建、启动；`scripts/open-browser.mjs` 等待服务就绪后打开浏览器。
 
 将 UI 输入视为草稿：不要在每个按键后去除尾部空格，也不要让 Modal 因回调引用变化而重新获取焦点。更改存储格式必须先设计版本迁移，不能改库名来绕过旧数据。
