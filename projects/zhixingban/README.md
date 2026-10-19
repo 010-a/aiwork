@@ -38,6 +38,7 @@
 
 - 浅色、深色或跟随系统；跟随系统会实时响应系统明暗变化。
 - 海洋蓝、鸢尾紫、森林绿、玫瑰粉、日落橙、石墨灰六组强调色。
+- 较小、标准（默认）、较大、特大四档字体大小，包含任务、按钮、说明与弹窗；可在设置内即时预览。默认正文从旧版约 14px 调到 16px，辅助说明也同步放大。
 - 舒适／紧凑显示密度，以及减少动态效果。系统启用减少动态效果时，应用也会遵循。
 
 外观即时生效并在本机自动记住；右上角月亮／太阳按钮也可以快速切换明暗。设置只影响界面，不改变任务记录；JSON 备份继续专注于任务、项目、日程与回顾数据。
@@ -64,7 +65,7 @@ Obsidian 关联只保存笔记路径或 `obsidian://` 链接。有效的 Obsidia
 
 [首页](docs/01-home.png) · [收集](docs/02-inbox.png) · [今日](docs/03-today.png) · [项目](docs/04-projects.png) · [日历](docs/05-calendar.png) · [回顾](docs/06-review.png)
 
-[深色外观设置](docs/appearance/00-dark-settings.png) · [深色首页](docs/appearance/01-dark-home.png) · [鸢尾紫浅色首页](docs/appearance/07-light-purple-home.png)
+[字号设置预览](docs/appearance/08-font-settings.png) · [深色外观设置](docs/appearance/00-dark-settings.png) · [深色首页](docs/appearance/01-dark-home.png) · [鸢尾紫浅色首页](docs/appearance/07-light-purple-home.png)
 
 ## 开发与检查
 

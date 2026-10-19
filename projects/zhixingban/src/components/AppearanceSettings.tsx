@@ -5,6 +5,7 @@ import {
   type Accent,
   type AppearancePreferences,
   type ThemeMode,
+  type FontSize,
 } from "../appearance";
 
 export const ACCENTS: { id: Accent; name: string; color: string }[] = [
@@ -19,6 +20,12 @@ const modes = [
   { id: "light" as ThemeMode, name: "浅色", icon: Sun },
   { id: "dark" as ThemeMode, name: "深色", icon: Moon },
   { id: "system" as ThemeMode, name: "跟随系统", icon: Monitor },
+];
+const fontSizes: { id: FontSize; name: string }[] = [
+  { id: "small", name: "较小" },
+  { id: "standard", name: "标准（默认）" },
+  { id: "large", name: "较大" },
+  { id: "extra-large", name: "特大" },
 ];
 
 export default function AppearanceSettings({
@@ -114,6 +121,32 @@ export default function AppearanceSettings({
         </div>
       </section>
       <section className="appearance-section settings-rows">
+        <div className="setting-row font-setting">
+          <div>
+            <h3>字体大小</h3>
+            <p>整个界面同步调整，默认比旧版更大</p>
+          </div>
+          <div
+            className="segmented font-size-options"
+            role="group"
+            aria-label="字体大小"
+          >
+            {fontSizes.map((size) => (
+              <button
+                key={size.id}
+                className={preferences.fontSize === size.id ? "active" : ""}
+                aria-pressed={preferences.fontSize === size.id}
+                onClick={() => updatePreferences({ fontSize: size.id })}
+              >
+                {size.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="font-preview" aria-label="字号预览">
+          <strong>把复杂的事，清楚地做。</strong>
+          <span>任务、说明、按钮与弹窗都会一起调整。</span>
+        </div>
         <div className="setting-row">
           <div>
             <h3>显示密度</h3>

@@ -14,6 +14,16 @@
       html {
         background: #f5f5f7;
         color-scheme: light;
+        font-size: 16px;
+      }
+      html[data-font-size="small"] {
+        font-size: 14px;
+      }
+      html[data-font-size="large"] {
+        font-size: 18px;
+      }
+      html[data-font-size="extra-large"] {
+        font-size: 20px;
       }
       html[data-theme="dark"] {
         background: #151619;
@@ -51,6 +61,14 @@
           : "blue";
         root.dataset.density =
           preferences.density === "compact" ? "compact" : "comfortable";
+        root.dataset.fontSize = [
+          "small",
+          "standard",
+          "large",
+          "extra-large",
+        ].includes(preferences.fontSize)
+          ? preferences.fontSize
+          : "standard";
         root.dataset.reduceMotion = String(
           preferences.reduceMotion === true ||
             matchMedia("(prefers-reduced-motion: reduce)").matches,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE, initializeAppearance, normalizeAppearance, parseAppearanceCache, persistAppearance, readAppearance, resolveAppearance, resolveTheme } from '../src/appearance';
-import type { Accent, AppearanceStorage, Density, ThemeMode } from '../src/appearance';
+import type { Accent, AppearanceStorage, Density, FontSize, ThemeMode } from '../src/appearance';
 
 function memoryStorage(): AppearanceStorage & { values: Map<string, string> } {
   const values = new Map<string, string>();
@@ -19,15 +19,51 @@ describe('appearance preference normalization', () => {
     for (const mode of ['system', 'light', 'dark'] satisfies ThemeMode[]) {
       for (const accent of ['blue', 'purple', 'green', 'rose', 'orange', 'graphite'] satisfies Accent[]) {
         for (const density of ['comfortable', 'compact'] satisfies Density[]) {
-          const input = { mode, accent, density, reduceMotion: true };
+          const input = { ...DEFAULT_APPEARANCE, mode, accent, density, reduceMotion: true };
           expect(normalizeAppearance(input)).toEqual(input);
         }
       }
     }
   });
   it('preserves valid fields while replacing unknown enums and nonboolean flags', () => {
-    expect(normalizeAppearance({ mode: 'dark', accent: 'url(javascript:alert(1))', density: 'tiny', reduceMotion: 'false', unexpected: '<script>' })).toEqual({ mode: 'dark', accent: 'blue', density: 'comfortable', reduceMotion: false });
-    expect(normalizeAppearance({ mode: 'LIGHT', accent: 'green', density: 'compact', reduceMotion: false })).toEqual({ mode: 'system', accent: 'green', density: 'compact', reduceMotion: false });
+    expect(normalizeAppearance({ mode: 'dark', accent: 'url(javascript:alert(1))', density: 'tiny', reduceMotion: 'false', unexpected: '<script>' })).toEqual({ ...DEFAULT_APPEARANCE, mode: 'dark', accent: 'blue', density: 'comfortable', reduceMotion: false });
+    expect(normalizeAppearance({ mode: 'LIGHT', accent: 'green', density: 'compact', reduceMotion: false })).toEqual({ ...DEFAULT_APPEARANCE, mode: 'system', accent: 'green', density: 'compact', reduceMotion: false });
+  });
+  it('upgrades older appearance caches to a larger standard size while retaining other choices', () => {
+    const old = {
+      mode: 'dark',
+      accent: 'purple',
+      density: 'compact',
+      reduceMotion: true,
+    };
+    expect(parseAppearanceCache(JSON.stringify(old))).toEqual({
+      preferences: { ...old, fontSize: 'standard' },
+    });
+  });
+  it('round-trips all font sizes and rejects invalid CSS-like font values', () => {
+    const storage = memoryStorage();
+    for (const fontSize of [
+      'small',
+      'standard',
+      'large',
+      'extra-large',
+    ] satisfies FontSize[]) {
+      const preferences = { ...DEFAULT_APPEARANCE, fontSize };
+      persistAppearance(preferences, storage);
+      expect(readAppearance(storage).preferences).toEqual(preferences);
+    }
+    for (const fontSize of [
+      0,
+      1000,
+      '32px',
+      'url(javascript:alert(1))',
+      null,
+      true,
+    ]) {
+      expect(
+        normalizeAppearance({ ...DEFAULT_APPEARANCE, fontSize }).fontSize,
+      ).toBe('standard');
+    }
   });
   it('ignores inherited settings and handles malformed getters', () => {
     expect(normalizeAppearance(Object.create({ mode: 'dark', accent: 'orange' }))).toEqual(DEFAULT_APPEARANCE);
@@ -40,7 +76,7 @@ describe('appearance preference normalization', () => {
 describe('local appearance persistence', () => {
   it('round-trips whitelisted settings under the dedicated key', () => {
     const storage = memoryStorage();
-    const preferences = { mode: 'dark', accent: 'purple', density: 'compact', reduceMotion: true } as const;
+    const preferences = { ...DEFAULT_APPEARANCE, mode: 'dark', accent: 'purple', density: 'compact', reduceMotion: true } as const;
     expect(readAppearance(storage)).toEqual({ preferences: { ...DEFAULT_APPEARANCE } });
     expect(persistAppearance(preferences, storage)).toEqual({});
     expect(storage.values.size).toBe(1);

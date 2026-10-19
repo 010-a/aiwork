@@ -4,12 +4,14 @@ export type ThemeMode = "system" | "light" | "dark";
 export type Accent =
   "blue" | "purple" | "green" | "rose" | "orange" | "graphite";
 export type Density = "comfortable" | "compact";
+export type FontSize = "small" | "standard" | "large" | "extra-large";
 export type ResolvedTheme = "light" | "dark";
 
 export interface AppearancePreferences {
   mode: ThemeMode;
   accent: Accent;
   density: Density;
+  fontSize: FontSize;
   reduceMotion: boolean;
 }
 
@@ -19,6 +21,7 @@ export const DEFAULT_APPEARANCE: Readonly<AppearancePreferences> =
     mode: "system",
     accent: "blue",
     density: "comfortable",
+    fontSize: "standard",
     reduceMotion: false,
   });
 
@@ -51,6 +54,7 @@ export function normalizeAppearance(value: unknown): AppearancePreferences {
     const mode = own("mode"),
       accent = own("accent"),
       density = own("density"),
+      fontSize = own("fontSize"),
       reduceMotion = own("reduceMotion");
     if (mode === "system" || mode === "light" || mode === "dark")
       result.mode = mode;
@@ -65,6 +69,13 @@ export function normalizeAppearance(value: unknown): AppearancePreferences {
       result.accent = accent;
     if (density === "comfortable" || density === "compact")
       result.density = density;
+    if (
+      fontSize === "small" ||
+      fontSize === "standard" ||
+      fontSize === "large" ||
+      fontSize === "extra-large"
+    )
+      result.fontSize = fontSize;
     if (typeof reduceMotion === "boolean") result.reduceMotion = reduceMotion;
   } catch {
     // Malformed objects/getters should be as harmless as a malformed JSON cache.
@@ -170,6 +181,7 @@ function applyAppearance(
     root.dataset.theme = resolvedTheme;
     root.dataset.accent = preferences.accent;
     root.dataset.density = preferences.density;
+    root.dataset.fontSize = preferences.fontSize;
     root.dataset.reduceMotion = String(reduceMotion);
   }
   return resolvedTheme;

@@ -26,6 +26,187 @@ async function navigate(page: Page, name: string) {
     .getByRole("button", { name: new RegExp(`^${name}`) }).click();
 }
 
+test("旧外观设置保留配色并使用更大默认字体，字号选择刷新后仍保留", async ({
+  page,
+  context,
+}) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("zhixingban-appearance-v1"))
+      localStorage.setItem(
+        "zhixingban-appearance-v1",
+        JSON.stringify({
+          mode: "dark",
+          accent: "purple",
+          density: "compact",
+          reduceMotion: false,
+        }),
+      );
+  });
+  await ready(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "purple");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "standard",
+  );
+  expect(
+    await page
+      .locator("html")
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe("16px");
+  await navigate(page, "收集箱");
+  await page
+    .getByRole("textbox", { name: "快速记录" })
+    .fill("检查全局字号调整");
+  await page.getByRole("textbox", { name: "快速记录" }).press("Enter");
+  expect(
+    await page
+      .locator(".inbox-list .task-name")
+      .evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+  ).toBeGreaterThanOrEqual(16);
+  const settings = await openAppearance(page);
+  for (const [name, value, pixels] of [
+    ["较小", "small", 14],
+    ["标准（默认）", "standard", 16],
+    ["较大", "large", 18],
+    ["特大", "extra-large", 20],
+  ] as const) {
+    await settings
+      .getByRole("group", { name: "字体大小" })
+      .getByRole("button", { name, exact: true })
+      .click();
+    await expect(page.locator("html")).toHaveAttribute("data-font-size", value);
+    await expect(
+      settings.getByRole("button", { name, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      await page
+        .locator("html")
+        .evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+    ).toBe(pixels);
+    expect(
+      await page
+        .locator(".inbox-list .task-name")
+        .evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+    ).toBeCloseTo(pixels, 1);
+  }
+  await closeAppearance(page);
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "extra-large",
+  );
+  const second = await context.newPage();
+  await ready(second);
+  await expect(second.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "extra-large",
+  );
+  await openAppearance(page);
+  await page.getByRole("button", { name: "标准（默认）", exact: true }).click();
+  await expect(second.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "standard",
+  );
+  await second.close();
+  await page.getByRole("button", { name: "恢复默认外观", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-font-size",
+    "standard",
+  );
+});
+
+test("特大字号下六页、任务详情和外观面板可读且不横向溢出", async ({ page }) => {
+  // Twelve page visits and eight screenshots need extra time on slower CI machines.
+  test.slow();
+  await ready(page);
+  await page.getByRole("button", { name: "数据与备份", exact: true }).click();
+  await page.getByRole("button", { name: "载入演示", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  const settings = await openAppearance(page);
+  await settings.getByRole("button", { name: "特大", exact: true }).click();
+  await settings.getByRole("button", { name: "深色", exact: true }).click();
+  expect(
+    await settings.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBeTruthy();
+  await closeAppearance(page);
+  const directory = path.join(
+    process.cwd(),
+    "work",
+    "screenshots",
+    "font-size",
+  );
+  await mkdir(directory, { recursive: true });
+  const pages = [
+    "任务导航",
+    "收集箱",
+    "今日执行",
+    "我的项目",
+    "日历安排",
+    "每周回顾",
+  ];
+  for (const [index, name] of pages.entries()) {
+    await navigate(page, name);
+    if (index === 0) {
+      const title = page.locator(".map-root strong");
+      expect(
+        await title.evaluate(
+          (element) =>
+            element.getBoundingClientRect().height /
+            parseFloat(getComputedStyle(element).fontSize),
+        ),
+      ).toBeLessThan(1.6);
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBeTruthy();
+    expect(
+      await page
+        .locator(".sidebar")
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBeTruthy();
+    await page.screenshot({
+      path: path.join(directory, `${index + 1}-extra-large.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await navigate(page, "今日执行");
+  await page
+    .getByRole("button", { name: "查看 测试 Spotiflow 分割效果", exact: true })
+    .click();
+  const detail = page.getByRole("dialog", { name: "任务详情", exact: true });
+  expect(
+    await detail.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: path.join(directory, "7-extra-large-detail.png"),
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await openAppearance(page);
+  await page.screenshot({
+    path: path.join(directory, "8-font-settings.png"),
+    animations: "disabled",
+  });
+  await closeAppearance(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  for (const name of pages) {
+    await navigate(page, name);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBeTruthy();
+  }
+});
+
 test("跟随系统实时响应，手动浅色和深色能覆盖系统设置", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await ready(page);
