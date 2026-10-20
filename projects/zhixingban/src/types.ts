@@ -1,6 +1,11 @@
 export type TaskStatus = "todo" | "doing" | "paused" | "done";
 export type Page =
-  "home" | "inbox" | "today" | "projects" | "calendar" | "review";
+  | "home"
+  | "inbox"
+  | "today"
+  | "projects"
+  | "calendar"
+  | "review";
 export interface MonitorTarget {
   type: "task" | "project";
   id: string;
@@ -27,6 +32,47 @@ export interface AlertRules {
   deadline: { enabled: boolean; days: number };
   blocked: { enabled: boolean; days: number };
 }
+export interface Principle {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  scope: "project" | "task" | "bug" | "all";
+  condition: "stall" | "blocked" | "deadline" | "checkpoint" | "manual";
+  days: number;
+  unit: "calendar" | "business";
+  action: string;
+}
+export interface Recurrence {
+  interval: number;
+  unit: "day" | "week" | "month";
+  mode: "schedule" | "completion";
+  paused?: boolean;
+  anchorDay?: number;
+}
+export interface TaskTemplate {
+  id: string;
+  title: string;
+  notes: string;
+  projectId?: string;
+  stageId?: string;
+  estimatedMinutes?: number;
+  demo?: boolean;
+}
+export interface TrashItem {
+  id: string;
+  deletedAt: string;
+  task?: Task;
+  event?: CalendarEvent;
+  entries: MonitoringEntry[];
+  dependents?: string[];
+}
+export interface BackupInfo {
+  id: string;
+  at: string;
+  label: string;
+  tasks: number;
+}
 export interface MonitoringEntry {
   id: string;
   entityType: MonitorTarget["type"];
@@ -42,7 +88,7 @@ export interface MonitoringEntry {
 }
 export interface MonitoringAlert {
   id: string;
-  rule: keyof AlertRules;
+  rule: string;
   target: MonitorTarget;
   title: string;
   reason: string;
@@ -70,6 +116,10 @@ export interface Task {
   completedAt?: string;
   demo?: boolean;
   monitor?: Monitor;
+  nextAction?: string;
+  estimatedMinutes?: number;
+  recurrence?: Recurrence;
+  repeatNextId?: string;
 }
 export interface Project {
   id: string;
@@ -84,6 +134,7 @@ export interface Project {
   updatedAt: string;
   demo?: boolean;
   monitor?: Monitor;
+  nextAction?: string;
 }
 export interface Stage {
   id: string;
@@ -108,10 +159,13 @@ export interface AppData {
   stages: Stage[];
   events: CalendarEvent[];
   reviewNotes: Record<string, string>;
+  templates?: TaskTemplate[];
+  trash?: TrashItem[];
   monitoring?: {
     enabledAt: string;
     rules: AlertRules;
     entries: MonitoringEntry[];
+    principles?: Principle[];
   };
 }
 export interface AppStore {
@@ -122,6 +176,8 @@ export interface AppStore {
   addTask: (title: string, patch?: Partial<Task>) => string;
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTasks: (ids: string[]) => void;
+  updateTasks: (ids: string[], patch: Partial<Task>) => void;
+  reorderTasks: (ids: string[]) => void;
   addProject: (patch: Partial<Project>) => string;
   updateProject: (id: string, patch: Partial<Project>) => void;
   addStage: (projectId: string, title: string) => string;
@@ -138,6 +194,24 @@ export interface AppStore {
   updateMonitor: (target: MonitorTarget, patch: Partial<Monitor>) => void;
   completeCheckpoint: (target: MonitorTarget) => void;
   updateAlertRules: (rules: AlertRules) => void;
+  savePrinciple: (principle: Principle) => void;
+  deletePrinciple: (id: string) => void;
+  undo: () => void;
+  undoLabel: string;
+  restoreTrash: (id: string) => void;
+  purgeTrash: (id: string) => void;
+  saveTemplate: (template: TaskTemplate) => void;
+  deleteTemplate: (id: string) => void;
+  storageMode: "browser" | "service";
+  backups: BackupInfo[];
+  backupNow: () => Promise<void>;
+  restoreBackup: (id: string) => Promise<void>;
+  readBackup: (id: string) => Promise<AppData>;
+  refreshBackups: () => Promise<void>;
+  flushSaves: () => Promise<void>;
+  legacyData?: AppData;
+  dataDirectory?: string;
+  storageWarning?: string;
 }
 export interface ViewProps {
   store: AppStore;

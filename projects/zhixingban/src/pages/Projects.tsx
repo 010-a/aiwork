@@ -17,6 +17,8 @@ import type { Project, Stage, Task, ViewProps } from "../types";
 import { isBlocked, projectProgress, recommendTasks } from "../selectors";
 import { getAlerts } from "../alerts";
 import { MonitorPanel } from "../components/Monitoring";
+import { ResumeCard } from "../components/DailyDetails";
+import { useViewState, isBoolean, isString } from "../viewMemory";
 import {
   EmptyState,
   Modal,
@@ -51,8 +53,16 @@ export default function Projects({
 }: ViewProps & { selectedProjectId?: string }) {
   const { data } = store;
   const alerts = getAlerts(data, today);
-  const [selectedId, setSelectedId] = useState(selectedProjectId);
-  const [showArchived, setShowArchived] = useState(false);
+  const [selectedId, setSelectedId] = useViewState<string>(
+    "selected-project",
+    selectedProjectId ?? "",
+    isString,
+  );
+  const [showArchived, setShowArchived] = useViewState(
+    "show-archived",
+    false,
+    isBoolean,
+  );
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newGoal, setNewGoal] = useState("");
@@ -421,6 +431,12 @@ export default function Projects({
                 </div>
               </div>
 
+              <ResumeCard
+                store={store}
+                target={{ type: "project", id: project.id }}
+                today={today}
+                openTask={openTask}
+              />
               <MonitorPanel
                 store={store}
                 target={{ type: "project", id: project.id }}

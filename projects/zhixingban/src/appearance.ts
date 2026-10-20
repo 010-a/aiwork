@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type Accent =
-  "blue" | "purple" | "green" | "rose" | "orange" | "graphite";
+  | "blue"
+  | "purple"
+  | "green"
+  | "rose"
+  | "orange"
+  | "graphite";
 export type Density = "comfortable" | "compact";
 export type FontSize = "small" | "standard" | "large" | "extra-large";
 export type ResolvedTheme = "light" | "dark";

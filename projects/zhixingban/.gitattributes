@@ -1,1 +1,1 @@
-start.cmd -text whitespace=cr-at-eol
+*.cmd -text whitespace=cr-at-eol

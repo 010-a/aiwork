@@ -13,6 +13,8 @@ import type { CalendarEvent, ViewProps } from "../types";
 import { addDays, dateKey, isDateKey, weekStart } from "../dates";
 import { EmptyState, Modal, TaskRow } from "../components/ui";
 import "./calendar-review.css";
+import { UpcomingChart } from "../components/Insights";
+import { useViewState } from "../viewMemory";
 
 type EventDraft = Omit<CalendarEvent, "id"> & { id?: string };
 const localDate = (key: string) => new Date(`${key}T12:00:00`);
@@ -28,9 +30,17 @@ export default function Calendar({
   quickAdd,
   today,
 }: ViewProps) {
-  const [mode, setMode] = useState<"week" | "month">("week");
-  const [anchor, setAnchor] = useState(today);
-  const [selected, setSelected] = useState(today);
+  const [mode, setMode] = useViewState<"week" | "month">(
+    "calendar-mode",
+    "week",
+    (v): v is "week" | "month" => v === "week" || v === "month",
+  );
+  const [anchor, setAnchor] = useViewState("calendar-anchor", today, isDateKey);
+  const [selected, setSelected] = useViewState(
+    "calendar-selected",
+    today,
+    isDateKey,
+  );
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [eventError, setEventError] = useState("");
   const { data } = store;
@@ -120,6 +130,14 @@ export default function Calendar({
         </div>
       </div>
 
+      <UpcomingChart
+        store={store}
+        today={today}
+        onPick={(date) => {
+          setSelected(date);
+          setAnchor(date);
+        }}
+      />
       <section className="card calendar-surface" aria-label="任务日历">
         <div className="calendar-toolbar">
           <div className="calendar-range">

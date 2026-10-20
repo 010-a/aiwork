@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Home as HomeIcon,
   Inbox as InboxIcon,
@@ -24,6 +30,8 @@ import {
   Sun,
   CornerDownLeft,
   ShieldAlert,
+  Undo2,
+  BookmarkPlus,
 } from "lucide-react";
 import type { Page, Task, ViewProps } from "./types";
 import { useAppStore, exportBackup, parseBackup } from "./store";
@@ -39,6 +47,8 @@ import AppearanceSettings from "./components/AppearanceSettings";
 import { useAppearance } from "./appearance";
 import { AlertRulesSettings } from "./components/Monitoring";
 import { getAlerts } from "./alerts";
+import { TemplateLibrary } from "./components/RoutineSettings";
+import LocalDataTools from "./components/LocalDataTools";
 
 const navigation = [
   { id: "home", label: "任务导航", icon: HomeIcon },
@@ -62,6 +72,12 @@ export default function App() {
   const appearance = useAppearance();
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [undoVisible, setUndoVisible] = useState(false);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const pageRef = useRef<Page>("home");
+  const undoRef = useRef(store.undo);
+  undoRef.current = store.undo;
   const [searchIndex, setSearchIndex] = useState(0);
   const [page, setPage] = useState<Page>("home"),
     [projectId, setProjectId] = useState<string>(),
@@ -87,11 +103,19 @@ export default function App() {
     setRulesOpen(true);
   }, []);
   const navigate = useCallback((p: Page, id?: string) => {
+    scrollPositions.current[pageRef.current] = window.scrollY;
+    pageRef.current = p;
     setPage(p);
     setProjectId(id);
     setSearch("");
-    window.scrollTo(0, 0);
   }, []);
+  useLayoutEffect(() => {
+    if (store.loaded)
+      window.scrollTo({
+        top: scrollPositions.current[page] ?? 0,
+        behavior: "instant",
+      });
+  }, [page, store.loaded]);
   const quickAdd = useCallback((patch: Partial<Task> = {}) => {
     composingRef.current = false;
     setSearch("");
@@ -105,6 +129,19 @@ export default function App() {
   useEffect(() => {
     const t = setInterval(() => setToday(todayKey()), 30000);
     const key = (e: KeyboardEvent) => {
+      const editable = (e.target as HTMLElement)?.closest(
+        "input,textarea,[contenteditable=true]",
+      );
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "z" &&
+        !e.shiftKey &&
+        !editable
+      ) {
+        e.preventDefault();
+        undoRef.current();
+        return;
+      }
       if (document.querySelector('[role="dialog"]')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -134,6 +171,11 @@ export default function App() {
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [search]);
+  useEffect(() => {
+    setUndoVisible(Boolean(store.undoLabel));
+    const timeout = setTimeout(() => setUndoVisible(false), 6000);
+    return () => clearTimeout(timeout);
+  }, [store.data, store.undoLabel]);
   useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(""), 4500);
@@ -310,6 +352,10 @@ export default function App() {
                   : "浅色"}
             </small>
           </button>
+          <button className="backup-nav" onClick={() => setTemplatesOpen(true)}>
+            <BookmarkPlus size={17} />
+            <span>常用模板</span>
+          </button>
           <button className="backup-nav" onClick={() => setBackup(true)}>
             <Database size={17} />
             <span>数据与备份</span>
@@ -332,7 +378,9 @@ export default function App() {
               ? "保存异常，请立即导出"
               : store.saveState === "saving"
                 ? "正在本地保存…"
-                : "数据仅保存在本机"}
+                : store.storageMode === "service"
+                  ? "已保存到本机文件"
+                  : "已保存到本机浏览器"}
           </div>
         </div>
       </aside>
@@ -402,6 +450,19 @@ export default function App() {
           </div>
           <div className="topbar-right">
             <button
+              className="icon-btn"
+              aria-label="撤销上一步"
+              title={
+                store.undoLabel
+                  ? `撤销${store.undoLabel} · Ctrl+Z`
+                  : "暂无可撤销操作"
+              }
+              disabled={!store.undoLabel}
+              onClick={store.undo}
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
               className="icon-btn theme-toggle"
               aria-label={
                 appearance.resolvedTheme === "dark"
@@ -446,6 +507,9 @@ export default function App() {
           </div>
         </header>
         <main className="main-content">
+          {store.storageWarning && (
+            <div className="error-banner">{store.storageWarning}</div>
+          )}
           {store.error && (
             <div className="error-banner">
               <CircleAlert size={18} />
@@ -548,6 +612,23 @@ export default function App() {
           )}
         </div>
       )}
+      {templatesOpen && (
+        <TemplateLibrary
+          store={store}
+          onClose={() => setTemplatesOpen(false)}
+          onUse={(template) => {
+            setTemplatesOpen(false);
+            quickAdd({
+              notes: template.notes,
+              projectId: template.projectId,
+              stageId: template.stageId,
+              estimatedMinutes: template.estimatedMinutes,
+              inbox: template.projectId ? false : true,
+            });
+            setAddTitle(template.title);
+          }}
+        />
+      )}
       {rulesOpen && <AlertRulesSettings store={store} onClose={closeRules} />}
       {detailId && (
         <TaskDetail
@@ -560,6 +641,41 @@ export default function App() {
       {addPatch && (
         <Modal title="记下一件事" onClose={closeAdd}>
           <p className="muted">只写一句话就够了，其他的稍后再说。</p>
+          {!!store.data.templates?.length && (
+            <label className="quick-template-label">
+              使用常用模板
+              <select
+                className="field"
+                aria-label="快速添加模板"
+                defaultValue=""
+                onChange={(e) => {
+                  const template = store.data.templates?.find(
+                    (t) => t.id === e.target.value,
+                  );
+                  if (template) {
+                    setAddTitle(template.title);
+                    setAddPatch((patch) => ({
+                      ...patch,
+                      notes: template.notes,
+                      projectId: template.projectId,
+                      stageId: template.stageId,
+                      estimatedMinutes: template.estimatedMinutes,
+                      inbox: template.projectId
+                        ? false
+                        : (patch?.inbox ?? true),
+                    }));
+                  }
+                }}
+              >
+                <option value="">不使用模板</option>
+                {store.data.templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -656,7 +772,9 @@ export default function App() {
             <div>
               <h3>你的事情，只留在你的电脑</h3>
               <p className="muted">
-                数据按浏览器和访问地址保存。定期导出一份 JSON，换电脑也能继续。
+                {store.storageMode === "service"
+                  ? "任务与 Agent 共享本机文件，自动保存并保留安全快照。"
+                  : "当前为浏览器模式。使用新版启动脚本可迁移至本地文件；原数据保留。"}
               </p>
             </div>
           </div>
@@ -710,6 +828,7 @@ export default function App() {
               }}
             />
           </div>
+          <LocalDataTools store={store} download={download} />
           <div className="backup-demo">
             <div>
               <strong>先体验一下</strong>
@@ -731,14 +850,34 @@ export default function App() {
           </div>
           <p className="backup-footnote">
             固定使用 http://127.0.0.1:5173
-            和同一个浏览器，避免找不到原有数据。应用运行时不连接任何云服务。
+            。首次升级请用原浏览器打开以迁移旧数据。应用不连接任何云服务。
           </p>
         </Modal>
       )}
-      {notice && (
+      {(notice ||
+        (undoVisible &&
+          store.undoLabel &&
+          !detailId &&
+          !backup &&
+          !rulesOpen &&
+          !templatesOpen &&
+          !appearanceOpen &&
+          !addPatch)) && (
         <div className="toast" role="status" key={notice}>
           <Check size={17} />
-          {notice}
+          {notice || "刚才的操作可以撤销"}
+          {undoVisible && store.undoLabel && (
+            <button
+              className="toast-undo"
+              disabled={store.saveState === "error"}
+              onClick={() => {
+                store.undo();
+                setNotice("已撤销");
+              }}
+            >
+              撤销
+            </button>
+          )}
         </div>
       )}
     </div>

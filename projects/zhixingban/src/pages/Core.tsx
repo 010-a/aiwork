@@ -39,6 +39,9 @@ import {
 import { weekStart, addDays, dateKey } from "../dates";
 import { AlertsSection } from "../components/Monitoring";
 import { getAlerts } from "../alerts";
+import { Momentum } from "../components/Insights";
+import { Carryover } from "../components/DailyDetails";
+import { useViewState } from "../viewMemory";
 
 export function Home(props: ViewProps) {
   const { store, today, navigate, openTask, quickAdd } = props;
@@ -68,7 +71,11 @@ export function Home(props: ViewProps) {
       dateKey(new Date(t.completedAt)) <= sunday,
   );
   const icons = [Microscope, Layers, BookOpen, Coffee];
-  const [mapMode, setMapMode] = useState<"all" | "active">("all");
+  const [mapMode, setMapMode] = useViewState<"all" | "active">(
+    "map-mode",
+    "all",
+    (v): v is "all" | "active" => v === "all" || v === "active",
+  );
   const displayed =
     mapMode === "active"
       ? projects.filter((p) => {
@@ -458,6 +465,7 @@ export function Home(props: ViewProps) {
             ))}
         </section>
       )}
+      <Momentum {...props} />
     </div>
   );
 }
@@ -472,7 +480,7 @@ export function Inbox(props: ViewProps) {
     if (text.trim() && store.addTask(text.trim())) setText("");
   };
   const batch = (patch: Partial<Task>) => {
-    selected.forEach((id) => store.updateTask(id, patch));
+    store.updateTasks(selected, patch);
     setSelected([]);
   };
   return (
@@ -647,7 +655,7 @@ export function Today(props: ViewProps) {
       j = i + direction;
     if (j < 0 || j >= ordered.length) return;
     [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
-    ordered.forEach((t, n) => store.updateTask(t.id, { order: n }));
+    store.reorderTasks(ordered.map((t) => t.id));
   };
   return (
     <div className="page-stack">
@@ -680,6 +688,7 @@ export function Today(props: ViewProps) {
         compact
         onOpenRules={props.openAlertRules}
       />
+      <Carryover {...props} />
       <div className="today-grid">
         <div className="page-stack">
           <section className="focus-card">
@@ -691,6 +700,12 @@ export function Today(props: ViewProps) {
               <>
                 <h2>{first.task.title}</h2>
                 <p>{first.reason}</p>
+                {first.task.nextAction && (
+                  <div className="focus-next-action">
+                    <small>下一小步</small>
+                    <p>{first.task.nextAction}</p>
+                  </div>
+                )}
                 <div className="focus-actions">
                   <button
                     className="btn btn-primary"

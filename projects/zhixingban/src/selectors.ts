@@ -4,7 +4,7 @@ import { dateKey, formatDate } from "./dates";
 export function isArchivedTask(task: Task, data: AppData): boolean {
   return Boolean(
     task.projectId &&
-    data.projects.find((project) => project.id === task.projectId)?.archived,
+      data.projects.find((project) => project.id === task.projectId)?.archived,
   );
 }
 
@@ -13,12 +13,12 @@ export function isBlocked(task: Task, data: AppData): boolean {
   if (task.status === "done") return false;
   return Boolean(
     task.blockedReason?.trim() ||
-    data.projects
-      .find((project) => project.id === task.projectId)
-      ?.blockedReason?.trim() ||
-    task.dependsOn?.some(
-      (id) => data.tasks.find((other) => other.id === id)?.status !== "done",
-    ),
+      data.projects
+        .find((project) => project.id === task.projectId)
+        ?.blockedReason?.trim() ||
+      task.dependsOn?.some(
+        (id) => data.tasks.find((other) => other.id === id)?.status !== "done",
+      ),
   );
 }
 
@@ -49,8 +49,8 @@ export function getTodayTasks(data: AppData, today: string): Task[] {
         (task.plannedDate === today ||
           Boolean(
             task.dueDate &&
-            task.dueDate <= today &&
-            (task.status !== "done" || completedOn(task, today)),
+              task.dueDate <= today &&
+              (task.status !== "done" || completedOn(task, today)),
           ) ||
           completedOn(task, today)),
     )

@@ -11,10 +11,7 @@ if ! node -e "const [major,minor]=process.versions.node.split('.').map(Number);p
   exit 1
 fi
 
-if [[ ! -f node_modules/.package-lock.json ]]; then
-  echo 'Installing dependencies. Internet access is needed for this first step.'
-  npm ci --no-audit --no-fund
-fi
+node scripts/ensure-dependencies.mjs
 
 npm run build
 echo 'Open http://127.0.0.1:5173 in your regular browser. Press Ctrl+C to stop.'

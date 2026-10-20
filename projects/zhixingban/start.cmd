@@ -19,11 +19,8 @@ if errorlevel 1 (
   goto :error
 )
 
-if not exist "node_modules\.package-lock.json" (
-  echo Installing dependencies. Internet access is needed for this first step.
-  call npm ci --no-audit --no-fund
-  if errorlevel 1 goto :error
-)
+node "scripts\ensure-dependencies.mjs"
+if errorlevel 1 goto :error
 
 echo Building Zhixingban...
 call npm run build

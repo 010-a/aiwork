@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { BlockerChart } from "../components/Insights";
+import { useViewState } from "../viewMemory";
 import {
   ArrowRight,
   CheckCircle2,
@@ -10,7 +12,7 @@ import {
   NotebookPen,
 } from "lucide-react";
 import type { Task, ViewProps } from "../types";
-import { addDays, dateKey, weekStart } from "../dates";
+import { addDays, isDateKey, dateKey, weekStart } from "../dates";
 import { isArchivedTask, isBlocked, projectProgress } from "../selectors";
 import { EmptyState, ProgressBar, TaskRow } from "../components/ui";
 import { AlertsSection } from "../components/Monitoring";
@@ -29,9 +31,14 @@ export default function Review({
   store,
   openTask,
   navigate,
+  quickAdd,
   today,
 }: ViewProps) {
-  const [week, setWeek] = useState(weekStart(today));
+  const [week, setWeek] = useViewState(
+    "review-week",
+    weekStart(today),
+    (v): v is string => isDateKey(v) && weekStart(v) === v,
+  );
   const [expandedEntriesWeek, setExpandedEntriesWeek] = useState<string>();
   const { data } = store;
   const end = addDays(week, 6);
@@ -634,6 +641,13 @@ export default function Review({
           )}
         </section>
       </div>
+      <BlockerChart
+        store={store}
+        today={today}
+        openTask={openTask}
+        quickAdd={quickAdd}
+        navigate={navigate}
+      />
     </div>
   );
 }

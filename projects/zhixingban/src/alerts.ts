@@ -1,5 +1,6 @@
 import { addDays, dateKey, formatDate, localDate } from "./dates";
 import { isBlocked } from "./selectors";
+import { getPrinciples } from "./principles";
 import type {
   AlertRules,
   AppData,
@@ -9,6 +10,7 @@ import type {
   MonitorTarget,
   Project,
   Task,
+  Principle,
 } from "./types";
 
 export const DEFAULT_ALERT_RULES: AlertRules = {
@@ -75,9 +77,35 @@ function computeAlerts(
   data: AppData,
   today: string,
   onlyTarget?: MonitorTarget,
+  principle?: Principle,
 ): MonitoringAlert[] {
   if (!data.monitoring) return [];
-  const { rules, enabledAt } = data.monitoring;
+  const { enabledAt } = data.monitoring;
+  const rules = principle
+    ? {
+        projectStall: {
+          enabled: principle.condition === "stall",
+          days: principle.days,
+        },
+        bugStall: {
+          enabled: principle.condition === "stall",
+          days: principle.days,
+        },
+        checkpoint: { enabled: principle.condition === "checkpoint" },
+        deadline: {
+          enabled: principle.condition === "deadline",
+          days: principle.days,
+        },
+        blocked: {
+          enabled: principle.condition === "blocked",
+          days: principle.days,
+        },
+      }
+    : data.monitoring.rules;
+  const elapsed = (start: string, end: string, defaultBusiness: boolean) =>
+    (principle ? principle.unit === "business" : defaultBusiness)
+      ? businessDaysBetween(start, end)
+      : calendarDaysBetween(start, end);
   const alerts: MonitoringAlert[] = [];
   const archivedIds = new Set(
     data.projects
@@ -97,6 +125,14 @@ function computeAlerts(
         );
 
   function inspect(target: MonitorTarget, entity: Task | Project) {
+    if (
+      principle &&
+      ((principle.scope === "project" && target.type !== "project") ||
+        ((principle.scope === "task" || principle.scope === "bug") &&
+          target.type !== "task") ||
+        (principle.scope === "bug" && entity.monitor?.preset !== "bug"))
+    )
+      return;
     const monitor: Monitor = entity.monitor ?? {};
     const task = target.type === "task" ? (entity as Task) : undefined;
     const projectTasks =
@@ -123,12 +159,12 @@ function computeAlerts(
       since: string,
     ) => {
       alerts.push({
-        id: `${target.type}-${target.id}-${rule}`,
-        rule,
+        id: `${target.type}-${target.id}-${principle?.id ?? rule}`,
+        rule: principle?.id ?? rule,
         target,
-        title: RULE_TITLES[rule],
+        title: principle?.title ?? RULE_TITLES[rule],
         reason,
-        suggestion,
+        suggestion: principle?.action || suggestion,
         severity,
         since,
       });
@@ -202,11 +238,11 @@ function computeAlerts(
     if (waiting && rules.blocked.enabled && !monitor.followUpDate) {
       const baseline = latest(monitor.blockedSince, enabledAt)!;
       const since = asDate(baseline);
-      const days = businessDaysBetween(since, today);
+      const days = elapsed(since, today, true);
       if (days >= rules.blocked.days) {
         add(
           "blocked",
-          `阻碍已持续 ${days} 个工作日，尚未解除`,
+          `阻碍已持续 ${days} ${principle?.unit === "calendar" ? "个自然日" : "个工作日"}，尚未解除`,
           "跟进样本、数据或反馈，或安排可以先做的替代任务。",
           "warning",
           since,
@@ -246,23 +282,37 @@ function computeAlerts(
         projectTasks.every((item) => item.status === "done")
       )
     ) {
-      const days = calendarDaysBetween(since, today);
-      if (days >= (monitor.stallDays ?? rules.projectStall.days)) {
+      const days = elapsed(since, today, false);
+      if (
+        days >=
+        ((!principle || principle.id === "projectStall"
+          ? monitor.stallDays
+          : undefined) ?? rules.projectStall.days)
+      ) {
         add(
           "projectStall",
-          `已连续 ${days} 天没有记录有效进展`,
+          `已连续 ${days} ${principle?.unit === "business" ? "个工作日" : "天"}没有记录有效进展`,
           "检查目标、缩小范围，确定一个能推进的小步骤；阴性结果也可以记录为进展。",
           "warning",
           since,
         );
       }
     }
-    if (task && monitor.preset === "bug" && rules.bugStall.enabled) {
-      const days = businessDaysBetween(since, today);
-      if (days >= (monitor.stallDays ?? rules.bugStall.days)) {
+    if (
+      task &&
+      (monitor.preset === "bug" || (principle && principle.scope !== "bug")) &&
+      rules.bugStall.enabled
+    ) {
+      const days = elapsed(since, today, true);
+      if (
+        days >=
+        ((!principle || principle.id === "bugStall"
+          ? monitor.stallDays
+          : undefined) ?? rules.bugStall.days)
+      ) {
         add(
           "bugStall",
-          `Bug 排查已经过 ${days} 个工作日，没有记录新进展`,
+          `${monitor.preset === "bug" ? "Bug 排查" : "任务开始后"}已经过 ${days} ${principle?.unit === "calendar" ? "个自然日" : "个工作日"}，没有记录新进展`,
           "整理最小复现、缩小问题范围，考虑换一种方法或求助；这里计算经过的工作日，不是投入工时。",
           "warning",
           since,
@@ -298,7 +348,16 @@ function computeAlerts(
 }
 
 export function getAlerts(data: AppData, today: string): MonitoringAlert[] {
-  return computeAlerts(data, today);
+  if (!data.monitoring?.principles) return computeAlerts(data, today);
+  return getPrinciples(data)
+    .filter((p) => p.enabled && p.condition !== "manual")
+    .flatMap((p) => computeAlerts(data, today, undefined, p))
+    .sort(
+      (a, b) =>
+        Number(b.severity === "danger") - Number(a.severity === "danger") ||
+        a.since.localeCompare(b.since) ||
+        a.id.localeCompare(b.id),
+    );
 }
 
 export function getTargetAlerts(
@@ -306,5 +365,8 @@ export function getTargetAlerts(
   target: MonitorTarget,
   today: string,
 ): MonitoringAlert[] {
-  return computeAlerts(data, today, target);
+  if (!data.monitoring?.principles) return computeAlerts(data, today, target);
+  return getPrinciples(data)
+    .filter((p) => p.enabled && p.condition !== "manual")
+    .flatMap((p) => computeAlerts(data, today, target, p));
 }

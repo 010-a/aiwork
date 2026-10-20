@@ -16,6 +16,7 @@ import type { AppStore } from "../types";
 import { isBlocked } from "../selectors";
 import { Modal, useDialog } from "./ui";
 import { MonitorPanel } from "./Monitoring";
+import { RoutineSettings } from "./RoutineSettings";
 
 function noteHref(value: string): string | undefined {
   const note = value.trim();
@@ -211,6 +212,19 @@ export default function TaskDetail({
               today={today}
             />
             <div className="detail-fields">
+              <label className="form-label">
+                下一小步（可选）
+                <textarea
+                  className="field"
+                  rows={2}
+                  aria-label="任务下一小步"
+                  maxLength={10000}
+                  placeholder="下次从哪里接着做？"
+                  value={task.nextAction ?? ""}
+                  onChange={(e) => patch({ nextAction: e.target.value })}
+                />
+              </label>
+              <RoutineSettings task={task} store={store} />
               <label className="form-label">
                 所属项目
                 <select
@@ -431,7 +445,8 @@ export default function TaskDetail({
         >
           <p className="confirmation-task-title">{task.title}</p>
           <p className="muted">
-            删除后无法撤销，其他任务会自动移除对它的依赖。
+            删除后可在“数据与备份 →
+            回收站”恢复，也可立即撤销。其他任务会暂时移除对它的依赖。
           </p>
           <div className="modal-actions">
             <button

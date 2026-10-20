@@ -4,3 +4,13 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 work/
+
+service-dist/
+local-data/
+
+# Local service credentials and personal snapshots must never enter Git.
+connection.json
+service.lock
+/data.json
+/backups/
+/recovery/

@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["app.spec.ts", "appearance.spec.ts", "monitoring.spec.ts"],
+  testMatch: ["app.spec.ts", "appearance.spec.ts", "monitoring.spec.ts", "daily.spec.ts", "agent.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 120_000,
@@ -24,6 +24,7 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run dev",
+    env: { ZHIXINGBAN_BROWSER_ONLY: "1" },
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

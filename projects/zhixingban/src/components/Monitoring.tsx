@@ -8,21 +8,10 @@ import {
   Plus,
   ShieldCheck,
 } from "lucide-react";
-import type {
-  AlertRules,
-  AppStore,
-  Monitor,
-  MonitorTarget,
-  ViewProps,
-} from "../types";
-import {
-  DEFAULT_ALERT_RULES,
-  getAlerts,
-  getTargetAlerts,
-  getTargetEntries,
-} from "../alerts";
+import type { AppStore, Monitor, MonitorTarget, ViewProps } from "../types";
+import { getAlerts, getTargetAlerts, getTargetEntries } from "../alerts";
 import { formatDate, isDateKey } from "../dates";
-import { Modal } from "./ui";
+import { getPrinciples } from "../principles";
 import "../monitoring.css";
 
 function timestampLabel(value: string) {
@@ -263,10 +252,17 @@ export function MonitorPanel({
   const latest = entries.find((entry) =>
     ["progress", "completed", "checkpoint"].includes(entry.kind),
   );
-  const rules = store.data.monitoring?.rules ?? DEFAULT_ALERT_RULES;
+  const defaultPrinciple = getPrinciples(store.data).find(
+    (p) =>
+      p.id === (target.type === "project" ? "projectStall" : "bugStall") &&
+      p.enabled &&
+      p.condition === "stall" &&
+      (target.type === "project"
+        ? ["project", "all"].includes(p.scope)
+        : ["task", "bug", "all"].includes(p.scope)),
+  );
   const bug = monitor?.preset === "bug";
-  const stallDefault =
-    target.type === "project" ? rules.projectStall.days : rules.bugStall.days;
+  const stallDefault = defaultPrinciple?.days;
   const update = (patch: Partial<Monitor>) =>
     store.updateMonitor(target, patch);
   function saveProgress(event: FormEvent) {
@@ -460,15 +456,25 @@ export function MonitorPanel({
             </div>
             {(target.type === "project" || bug) && (
               <label className="form-label">
-                停滞阈值（{target.type === "project" ? "自然日" : "工作日"}）
+                停滞阈值（
+                {(defaultPrinciple?.unit ??
+                  (target.type === "project" ? "calendar" : "business")) ===
+                "business"
+                  ? "工作日"
+                  : "自然日"}
+                ）
                 <NumberSetting
                   label="停滞阈值"
                   value={monitor?.stallDays}
-                  placeholder={`跟随原则：${stallDefault}`}
+                  placeholder={
+                    stallDefault === undefined
+                      ? "默认停滞原则未启用"
+                      : `跟随原则：${stallDefault}`
+                  }
                   onSave={(value) => update({ stallDays: value })}
                 />
                 <small className="muted">
-                  留空使用默认值。工作日仅指周一至周五，不代表实际投入工时。
+                  此数值仅覆盖默认停滞原则，自定义原则使用各自阈值。工作日仅指周一至周五，不代表工时。
                 </small>
               </label>
             )}
@@ -586,153 +592,4 @@ export function MonitorPanel({
   );
 }
 
-const principles: {
-  id: keyof AlertRules;
-  title: string;
-  condition: string;
-  action: string;
-  unit?: string;
-}[] = [
-  {
-    id: "projectStall",
-    title: "项目停滞",
-    condition: "已开始的项目没有有效进展",
-    action: "缩小范围，确定一个可以验证的小步骤",
-    unit: "自然日",
-  },
-  {
-    id: "bugStall",
-    title: "Bug 排查停滞",
-    condition: "开始排查后没有获得新信息",
-    action: "整理复现条件，换方法或求助",
-    unit: "工作日",
-  },
-  {
-    id: "checkpoint",
-    title: "目标未达",
-    condition: "检查日期已过，目标尚未确认达成",
-    action: "判断延期、调整方法或修改目标",
-  },
-  {
-    id: "deadline",
-    title: "截止日期风险",
-    condition: "临近截止日期或已经逾期",
-    action: "调整顺序与交付范围",
-    unit: "天前提醒",
-  },
-  {
-    id: "blocked",
-    title: "阻碍跟进",
-    condition: "阻碍持续过久，或到达约定跟进日",
-    action: "跟进外部条件，安排替代行动",
-    unit: "工作日",
-  },
-];
-
-export function AlertRulesSettings({
-  store,
-  onClose,
-}: {
-  store: AppStore;
-  onClose: () => void;
-}) {
-  const rules = store.data.monitoring?.rules ?? DEFAULT_ALERT_RULES;
-  function update(
-    id: keyof AlertRules,
-    patch: { enabled?: boolean; days?: number },
-  ) {
-    store.updateAlertRules({ ...rules, [id]: { ...rules[id], ...patch } });
-  }
-  return (
-    <Modal title="预警原则" onClose={onClose} className="monitor-rules-modal">
-      <p className="muted monitor-rules-intro">
-        给调整留一个提醒。以下规则会自动检查已有数据，数值编辑完成后自动保存。
-      </p>
-      <div className="monitor-rules-table-wrap">
-        <table className="monitor-rules-table">
-          <thead>
-            <tr>
-              <th>启用 / 原则</th>
-              <th>什么时候提醒</th>
-              <th>默认阈值</th>
-              <th>建议行动</th>
-            </tr>
-          </thead>
-          <tbody>
-            {principles.map((principle) => {
-              const rule = rules[principle.id];
-              return (
-                <tr key={principle.id}>
-                  <th scope="row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        aria-label={`启用${principle.title}`}
-                        checked={rule.enabled}
-                        onChange={(event) =>
-                          update(principle.id, {
-                            enabled: event.target.checked,
-                          })
-                        }
-                      />
-                      {principle.title}
-                    </label>
-                  </th>
-                  <td>{principle.condition}</td>
-                  <td>
-                    {"days" in rule ? (
-                      <div className="monitor-rule-threshold">
-                        <NumberSetting
-                          label={`${principle.title}阈值`}
-                          value={rule.days}
-                          min={principle.id === "deadline" ? 0 : 1}
-                          onSave={(value) => {
-                            if (value !== undefined)
-                              update(principle.id, { days: value });
-                          }}
-                        />
-                        <span>{principle.unit}</span>
-                      </div>
-                    ) : (
-                      "按检查日期"
-                    )}
-                  </td>
-                  <td>{principle.action}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="monitor-principle-note">
-        <ShieldCheck size={20} />
-        <div>
-          <strong>什么才算有效进展？</strong>
-          <p>
-            完成任务、确认检查点达成，或主动记录一个结果。阴性结果和排除假设也有价值。改标题、改期与打开页面不算进展。
-          </p>
-          <p>
-            暂停、尚未开始或计划在未来的事项不触发停滞预警；已完成和已归档的事项退出检查。明确的日期风险仍会提示。
-          </p>
-          <p>
-            旧数据从升级后开始观察；工作日按周一至周五计算，不含节假日配置，也不代表实际工时。单个项目和
-            Bug 可覆盖默认停滞阈值。
-          </p>
-        </div>
-      </div>
-      <div className="modal-actions">
-        <button
-          className="btn btn-ghost"
-          onClick={() =>
-            store.updateAlertRules(structuredClone(DEFAULT_ALERT_RULES))
-          }
-        >
-          恢复默认原则
-        </button>
-        <button className="btn btn-primary" onClick={onClose}>
-          完成
-        </button>
-      </div>
-    </Modal>
-  );
-}
+export { default as AlertRulesSettings } from "./PrincipleLibrary";
