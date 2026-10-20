@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 const execute = promisify(execFile);
@@ -32,7 +32,9 @@ async function cli(action: string, value: unknown) {
   return JSON.parse(stdout);
 }
 test.beforeAll(async () => {
-  directory = await mkdtemp(path.resolve("work/service-browser-"));
+  const temporaryRoot = path.resolve("work/service-tests");
+  await mkdir(temporaryRoot, { recursive: true });
+  directory = await mkdtemp(path.join(temporaryRoot, "instance-"));
   environment = {
     ...process.env,
     ZHIXINGBAN_DATA_DIR: directory,

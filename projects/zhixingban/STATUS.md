@@ -42,4 +42,4 @@
 
 先读 AGENTS.md 和 AGENT_API.md，保持共用命令、严格校验、条件写入及旧数据迁移约束。验证命令为 npm test、npm run build、npm run test:e2e；Playwright 用独立临时数据目录，禁止触碰真实数据。不要提交 node_modules、dist、service-dist、work、connection.json 或个人备份。
 
-目标仓库 `010-a/aiwork`，分支 `codex/zhixingban`，PR #1 面向 main；不自行合并。远端 CI 以 GitHub Actions 为准，本轮 113 项单元、24 项浏览器及构建验证已完成，随本次提交交付。此前两张独立预警演示截图公开上传曾被自动审批拒绝，保留在 work/，不要未经新授权公开；本轮不上传截图。
+目标仓库 `010-a/aiwork`，分支 `codex/zhixingban`，PR #1 面向 main；不自行合并。远端 CI 以 GitHub Actions 为准，本轮 113 项单元、24 项浏览器及构建验证已完成，随本次提交交付。首轮远端 CI 的 Agent 浏览器用例因干净检出缺少 work/ 临时父目录未启动；已补上递归创建，修复后本地 5 项 Agent 浏览器用例重跑通过；产品源码未变，最新远端结果以 Actions 为准。此前两张独立预警演示截图公开上传曾被自动审批拒绝，保留在 work/，不要未经新授权公开；本轮不上传截图。
