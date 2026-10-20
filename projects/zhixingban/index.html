@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#3678ed" />
+    <meta
+      name="description"
+      content="知行办，本地、离线的个人任务导航工具。把复杂的事，变成清楚的下一步。"
+    />
+    <title>知行办 · 让重要的事，有序发生</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <style>
+      html {
+        background: #f5f5f7;
+        color-scheme: light;
+        font-size: 16px;
+      }
+      html[data-font-size="small"] {
+        font-size: 14px;
+      }
+      html[data-font-size="large"] {
+        font-size: 18px;
+      }
+      html[data-font-size="extra-large"] {
+        font-size: 20px;
+      }
+      html[data-theme="dark"] {
+        background: #151619;
+        color-scheme: dark;
+      }
+    </style>
+    <script>
+      (() => {
+        let preferences = {};
+        try {
+          preferences = JSON.parse(
+            localStorage.getItem("zhixingban-appearance-v1") || "{}",
+          );
+        } catch {}
+        if (!preferences || typeof preferences !== "object") preferences = {};
+        const root = document.documentElement;
+        const mode = ["light", "dark", "system"].includes(preferences.mode)
+          ? preferences.mode
+          : "system";
+        root.dataset.theme =
+          mode === "dark" ||
+          (mode === "system" &&
+            matchMedia("(prefers-color-scheme: dark)").matches)
+            ? "dark"
+            : "light";
+        root.dataset.accent = [
+          "blue",
+          "purple",
+          "green",
+          "rose",
+          "orange",
+          "graphite",
+        ].includes(preferences.accent)
+          ? preferences.accent
+          : "blue";
+        root.dataset.density =
+          preferences.density === "compact" ? "compact" : "comfortable";
+        root.dataset.fontSize = [
+          "small",
+          "standard",
+          "large",
+          "extra-large",
+        ].includes(preferences.fontSize)
+          ? preferences.fontSize
+          : "standard";
+        root.dataset.reduceMotion = String(
+          preferences.reduceMotion === true ||
+            matchMedia("(prefers-reduced-motion: reduce)").matches,
+        );
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

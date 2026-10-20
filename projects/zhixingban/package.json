@@ -1,0 +1,33 @@
+{
+  "name": "zhixingban",
+  "private": true,
+  "version": "1.4.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -b && tsc -p tsconfig.server.json && vite build && vite build --config vite.service.config.ts",
+    "preview": "node service-dist/main.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "agent": "node service-dist/cli.mjs",
+    "mcp": "node service-dist/mcp.mjs",
+    "stop": "node service-dist/cli.mjs stop"
+  },
+  "dependencies": {
+    "idb": "^8.0.3",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "fake-indexeddb": "^6.0.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.0"
+  }
+}
